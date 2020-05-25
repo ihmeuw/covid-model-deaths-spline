@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from mrtool import MRData
 from mrtool import LinearCovModel
-from mrtool import MRBRT
+from mrtool import MRBeRT
 from typing import List, Dict
 
 
@@ -68,22 +68,21 @@ class SplineFit:
             raise ValueError(f"Unsupported independent variable(s) entered: {'; '.join(bad_vars)}")
 
         # spline cov model
-        spline = LinearCovModel(
+        spline_model = LinearCovModel(
             alt_cov=spline_var,
             use_re=False,
             use_spline=True,
             **spline_options,
             name=spline_var
         )
-        cov_models += [spline]
         
         # var names
         self.indep_vars = [i for i in indep_vars if i != 'intercept']
         self.spline_var = spline_var
         
         # model
-        self.mr_model = MRBRT(mr_data, cov_models=cov_models)
-        self.spline = spline.create_spline(mr_data)
+        self.mr_model = MRBeRT(mr_data, ensemble_cov_model=spline_model, cov_models=cov_models)
+        self.spline_model = spline_model.create_spline(mr_data)
         self.coef_dict = None
 
     def fit_model(self):
@@ -105,8 +104,8 @@ class SplineFit:
         preds = []
         for variable, coef in self.coef_dict.items():
             if variable == self.spline_var:
-                mat = self.spline.design_mat(pred_data[variable].values,
-                                             l_extra=True, r_extra=True)
+                mat = self.spline_model.design_mat(pred_data[variable].values,
+                                                   l_extra=True, r_extra=True)
             else:
                 mat = pred_data[[variable]].values
             preds += [mat.dot(coef)]

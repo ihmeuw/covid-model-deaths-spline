@@ -56,6 +56,10 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     logger.debug("Synthesizing plots.")
     pdf_merger.pdf_merger(indir=plot_dir, outfile=str(output_root / 'model_results.pdf'))
 
+    model_data = model_data.rename(columns={'Date': 'date'}).set_index(['location_id', 'date'])
+    draw_df = draw_df.set_index(['location_id', 'date'])
+    draw_df['observed'] = model_data['Death rate'].notnull().astype(int)
+
     logger.debug("Writing output data.")
-    model_data.to_csv(output_root / 'model_data.csv', index=False)
-    draw_df.to_csv(output_root / 'model_results.csv', index=False)
+    model_data.rename(columns={'date': 'Date'}).reset_index().to_csv(output_root / 'model_data.csv', index=False)
+    draw_df.reset_index().to_csv(output_root / 'model_results.csv', index=False)

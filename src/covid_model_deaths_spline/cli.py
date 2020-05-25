@@ -13,7 +13,7 @@ from covid_model_deaths_spline import runner
 @click.option('-i', '--inputs-version',
               type=click.Path(file_okay=False),
               default=paths.BEST_LINK,
-              help=('Which version of the temperature data to gather and format. '
+              help=('Which version of the inputs data to gather and format. '
                     'May be a full path or relative to the standard inputs root.'))
 @click.option('-o', '--output-root',
               type=click.Path(file_okay=False),

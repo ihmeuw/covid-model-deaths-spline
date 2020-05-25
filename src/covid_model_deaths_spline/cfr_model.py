@@ -44,6 +44,7 @@ def cfr_model(location_id: int,
               dep_var: str, spline_var: str, indep_vars: List[str]) -> pd.DataFrame:
     np.random.seed(location_id)
     df = data[data.location_id == location_id]
+    deaths_threshold = deaths_threshold(df)
     # add intercept
     orig_cols = df.columns.to_list()
     df['intercept'] = 1

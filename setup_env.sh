@@ -19,5 +19,5 @@ git clone https://github.com/zhengp0/limetr.git &&
 cd limetr && make install && cd .. &&
 git clone https://github.com/ihmeuw-msca/MRTool.git &&
 cd MRTool && git checkout seiir_model && python setup.py install && cd .. &&
-cd .. && rm -rf limetr MRTool SLIME &&
+rm -rf limetr MRTool SLIME &&
 python setup.py develop

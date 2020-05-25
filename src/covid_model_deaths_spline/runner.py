@@ -1,9 +1,12 @@
 from pathlib import Path
+import warnings
 
 from covid_shared import shell_tools, cli_tools
 from loguru import logger
 
 from covid_model_deaths_spline import data, cfr_model, pdf_merger
+
+warnings.simplefilter('ignore')
 
 
 def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root: Path, holdout_days: int):
@@ -51,7 +54,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     draw_df = cfr_model.synthesize_time_series_parallel(model_data, plot_dir, **var_dict)
 
     logger.debug("Synthesizing plots.")
-    pdf_merger.pdf_merger(indir=plot_dir, outfile=output_root / 'model_results.pdf')
+    pdf_merger.pdf_merger(indir=plot_dir, outfile=str(output_root / 'model_results.pdf'))
 
     logger.debug("Writing output data.")
     model_data.to_csv(output_root / 'model_data.csv', index=False)

@@ -17,7 +17,7 @@ from covid_model_deaths_spline import runner
                     'May be a full path or relative to the standard inputs root.'))
 @click.option('-o', '--output-root',
               type=click.Path(file_okay=False),
-              default=paths.SEIR_COVARIATES_RAW_OUTPUT_ROOT,
+              default=paths.DEATHS_SPLINE_OUTPUT_ROOT,
               show_default=True)
 @click.option('--n-holdout-days',
               type=click.INT,

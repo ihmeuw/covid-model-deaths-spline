@@ -160,6 +160,9 @@ def plotter(df: pd.DataFrame, unadj_vars: List[str], plot_file: str):
     ax[0, 1].plot(df.loc[~df['Death rate'].isnull(), 'Confirmed case rate'], 
                   df.loc[~df['Death rate'].isnull(), 'Predicted death rate'], 
                   **pred_lines)
+    ax[0, 1].plot(df.loc[~df['Death rate'].isnull(), 'Confirmed case rate'], 
+                  df.loc[~df['Death rate'].isnull(), 'Smoothed predicted death rate'], 
+                  **smoothed_pred_lines)
     ax[0, 1].set_xlabel('Cumulative case rate', fontsize=10)
     ax[0, 1].set_ylabel('Cumulative death rate', fontsize=10)
     
@@ -179,7 +182,7 @@ def plotter(df: pd.DataFrame, unadj_vars: List[str], plot_file: str):
         ax[1, i].scatter(df['Date'][1:], 
                          np.diff(df[raw_variable]) * df['population'][1:], 
                          **raw_points)
-        ax[1, i].axhline(0, color='black', alpha=0.25, linestyle='--')
+        ax[1, i].axhline(0, color='black', alpha=0.25)
         if 'death' in smooth_variable.lower():
             ax[1, i].set_xlabel('Date', fontsize=10)
         else:
@@ -187,14 +190,15 @@ def plotter(df: pd.DataFrame, unadj_vars: List[str], plot_file: str):
         ax[1, i].set_ylabel(f'Daily {raw_variable.lower()}', fontsize=10)
 
     # model prediction
-    ax[0, 0].plot(df['Date'], df['Predicted death rate'] * df['population'], linestyle='--', **pred_lines)
+    ax[0, 0].plot(df['Date'], df['Predicted death rate'] * df['population'], 
+                  **pred_lines)
     ax[1, 0].plot(df['Date'][1:], 
                   np.diff(df['Predicted death rate']) * df['population'][1:], 
                   **pred_lines)
     
     # smoothed
     ax[0, 0].plot(df['Date'], 
-                  df['Smoothed predicted death rate'] * df['population'], linestyle='--', 
+                  df['Smoothed predicted death rate'] * df['population'], 
                   **smoothed_pred_lines)
     ax[0, 0].fill_between(
         df['Date'],

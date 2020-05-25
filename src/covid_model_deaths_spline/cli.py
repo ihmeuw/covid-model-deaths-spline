@@ -12,12 +12,17 @@ from covid_model_deaths_spline import runner
 @cli_tools.pass_run_metadata()
 @click.option('-i', '--inputs-version',
               type=click.Path(file_okay=False),
+              default=paths.BEST_LINK,
               help=('Which version of the temperature data to gather and format. '
                     'May be a full path or relative to the standard inputs root.'))
 @click.option('-o', '--output-root',
               type=click.Path(file_okay=False),
               default=paths.SEIR_COVARIATES_RAW_OUTPUT_ROOT,
               show_default=True)
+@click.option('--n-holdout-days',
+              type=click.INT,
+              default=0,
+              help='Number of days of data to drop.')
 @click.option('-b', '--mark-best', 'mark_dir_as_best',
               is_flag=True,
               help='Marks the new outputs as best in addition to marking them as latest.')
@@ -26,7 +31,7 @@ from covid_model_deaths_spline import runner
               help='Tags this run as a production run.')
 @cli_tools.add_verbose_and_with_debugger
 def run_deaths(run_metadata,
-               inputs_version, output_root,
+               inputs_version, output_root, n_holdout_days,
                mark_dir_as_best, production_tag,
                verbose, with_debugger):
     """Run spline deaths model."""
@@ -42,7 +47,7 @@ def run_deaths(run_metadata,
     cli_tools.configure_logging_to_files(run_directory)
 
     main = cli_tools.monitor_application(runner.make_deaths, logger, with_debugger)
-    app_metadata, _ = main(inputs_root, run_directory)
+    app_metadata, _ = main(inputs_root, run_directory, n_holdout_days)
 
     run_metadata['app_metadata'] = app_metadata.to_dict()
     run_metadata.dump(run_directory / paths.METADATA_FILE_NAME)

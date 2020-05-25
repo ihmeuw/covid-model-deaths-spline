@@ -17,7 +17,14 @@ if __name__ == "__main__":
     install_requirements = [
         'click',
         'covid_shared>=1.0.22',
-        'loguru'
+        'dill',
+        'loguru',
+        'matplotlib',
+        'numpy',
+        'pandas',
+        'seaborn',
+        'tqdm',
+        'pypdf2',
     ]
 
     test_requirements = [

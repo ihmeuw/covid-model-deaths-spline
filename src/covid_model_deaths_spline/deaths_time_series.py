@@ -8,7 +8,8 @@ import dill as pickle
 from typing import List, Dict
 
 from front_end_loader import load_locations, load_cases_deaths_pop, load_testing
-from cfr_model import cfr_model, synthesize_time_series
+from cfr_model import cfr_model
+from smoother import synthesize_time_series
 from pdf_merger import pdf_merger
 
 import warnings
@@ -25,16 +26,24 @@ def holdout_days(df: pd.DataFrame, n_holdout_days: int) -> pd.DataFrame:
     return df
 
 
-def find_missing_locations(df: pd.DataFrame, measure: str, loc_df: pd.DataFrame) -> List[int]:
-    missing_list = list(set(loc_df['location_id']) - set(df['location_id'].unique()))
-    if len(missing_list) > 0:
-        print(f"Missing {measure} for "
-              f"{';'.join(loc_df.loc[loc_df['location_id'].isin(missing_list), 'location_name'].to_list())}")
+def check_counts(df: pd.DataFrame, rate_var: str, action: str, threshold: int = 3) -> pd.DataFrame:
+    df['Count'] = df[rate_var] * df['population']
+    df['Count'] = df['Count'].fillna(0)
+    sub_thresh = df.groupby('location_id')['Count'].transform(max) <= threshold
+    print(f"Fewer than {threshold} {rate_var.lower().replace(' rate', 's')} for "
+          f"{';'.join(df.loc[sub_thresh, 'location_name'].unique())}\n")
+    if action == 'fill_na':
+        df.loc[sub_thresh, rate_var] = np.nan
+    elif action == 'drop':
+        df = df.loc[~sub_thresh].reset_index(drop=True)
+    else:
+        raise ValueError('Invalid action specified.')
+    del df['Count']
     
-    return missing_list
-    
+    return df
 
-def main(location_set_version_id: int, inputs_version: str, testing_version: str,
+
+def main(location_set_version_id: int, inputs_version: str,
          run_label: str, n_holdout_days: int):
     # set up out dir
     out_dir = f'/ihme/covid-19/deaths/dev/{run_label}'
@@ -61,47 +70,38 @@ def main(location_set_version_id: int, inputs_version: str, testing_version: str
     # load all data we have
     loc_df = load_locations(location_set_version_id)
     case_df, death_df, pop_df = load_cases_deaths_pop(inputs_version)
-    #test_df = load_testing(testing_version)
     
     # drop days of data as specified
     case_df = holdout_days(case_df, n_holdout_days)
     death_df = holdout_days(death_df, n_holdout_days)
-    #test_df = holdout_days(test_df, n_holdout_days)
-    
-    # identify locations for which we do not have all data
-    missing_cases = find_missing_locations(case_df, 'cases', loc_df)
-    missing_deaths = find_missing_locations(death_df, 'deaths', loc_df)
-    #missing_testing = find_missing_locations(test_df, 'testing', loc_df)
-    missing_locations = list(set(missing_cases + missing_deaths))  #  + missing_testing
     
     # add some poorly behaving locations to missing list
     # Assam (4843); Meghalaya (4862)
-    missing_locations += [4843, 4862]
+    bad_locations = [4843, 4862]
     
     # combine data
     df = reduce(lambda x, y: pd.merge(x, y, how='outer'),
                 [case_df[['location_id', 'Date', 'Confirmed case rate']],
-                 #test_df[['location_id', 'Date', 'Testing rate']],
                  death_df[['location_id', 'Date', 'Death rate']],
                  pop_df[['location_id', 'population']]])
     df = loc_df[['location_id', 'location_name']].merge(df)
-    not_missing = ~df['location_id'].isin(missing_locations)
-    df = df.loc[not_missing]
+    estimating = ~df['location_id'].isin(bad_locations)
+    df = df.loc[estimating]
     
-    # must have at least two cases and deaths
-    df['Cases'] = df['Confirmed case rate'] * df['population']
-    df = df.loc[df.groupby('location_id')['Cases'].transform(max) >= 2].reset_index(drop=True)
-    del df['Cases']
-    df['Deaths'] = df['Death rate'] * df['population']
-    df = df.loc[df.groupby('location_id')['Deaths'].transform(max) >= 2].reset_index(drop=True)
-    del df['Deaths']
+    # don't use CFR model if < 2 cases; must have at least two deaths to run
+    df = check_counts(df, 'Confirmed case rate', 'fill_na')
+    days_w_cases = df['Confirmed case rate'].notnull().groupby(df['location_id']).sum()
+    no_cases_locs = days_w_cases[days_w_cases == 0].index.to_list()
+    df = check_counts(df, 'Death rate', 'drop')
     
     # fit model
     np.random.seed(15243)
     var_dict = {'dep_var':'Death rate',
                 'spline_var':'Confirmed case rate',
                 'indep_vars':[]}
-    df = (df.groupby('location_id', as_index=False)
+    no_cases_df = df.loc[df['location_id'].isin(no_cases_locs)]
+    df = (df.loc[~df['location_id'].isin(no_cases_locs)]
+          .groupby('location_id', as_index=False)
           .apply(lambda x: cfr_model(
                   x, 
                   deaths_threshold=max(1,
@@ -110,12 +110,13 @@ def main(location_set_version_id: int, inputs_version: str, testing_version: str
                   model_dir=model_dir,
                   **var_dict))
           .reset_index(drop=True))
+    df = df.append(no_cases_df)
 
     # fit spline to output
     draw_df = (df.groupby('location_id', as_index=False)
                .apply(lambda x: synthesize_time_series(
                    x, 
-                   daily=True, log=True,
+                   #daily=True, log=True,
                    plot_dir=plot_dir, 
                    **var_dict))
                .reset_index(drop=True))
@@ -133,7 +134,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--location_set_version_id', help='IHME location hierarchy.', type=int)
     parser.add_argument('--inputs_version', help='Version tag for `model-inputs`.', type=str)
-    parser.add_argument('--testing_version', help='Version tag for `testing-outputs`.', type=str, default=None)
     parser.add_argument('--run_label', help='Version tag for model results.', type=str)
     parser.add_argument('--n_holdout_days', help='Number of days of data to drop.', type=int, default=0)
     args = parser.parse_args()

@@ -1,18 +1,17 @@
+from typing import List
+
 import pandas as pd
 import numpy as np
-from scipy import stats
-import matplotlib.pyplot as plt
-import seaborn as sns
-from typing import List
-from mr_spline import SplineFit
+
+from covid_model_deaths_spline.mr_spline import SplineFit
 
 
-def smoother(df: pd.DataFrame, smooth_var_set: List[str], 
+def smoother(df: pd.DataFrame, smooth_var_set: List[str],
              n_draws: int, daily: bool, log: bool) -> pd.DataFrame:
     # get overall knot options (one week apart)
     days = df.index.values
     week_knots = np.arange(days[0], days[-1], 7)[1:]
-    
+
     # extract inputs
     keep_idx = ~df[smooth_var_set].isnull().all(axis=1)
     no_na_idx = ~df[smooth_var_set].isnull().any(axis=1)
@@ -58,10 +57,10 @@ def smoother(df: pd.DataFrame, smooth_var_set: List[str],
         if not daily:
             spline_options.update({'prior_spline_monotonicity':'increasing'})
         mr_mod = SplineFit(
-            data=mod_df, 
+            data=mod_df,
             dep_var='y',
             spline_var='x',
-            indep_vars=['intercept'], 
+            indep_vars=['intercept'],
             spline_options=spline_options,
             scale_se=daily,
             observed_var='observed',
@@ -93,5 +92,5 @@ def smoother(df: pd.DataFrame, smooth_var_set: List[str],
     draw_df['Smooth log'] = log
     draw_df['Smooth daily'] = daily
     draw_df = pd.concat([draw_df, pd.DataFrame(draws, columns=[f'draw_{d}' for d in range(n_draws)])], axis=1)
-        
+
     return draw_df

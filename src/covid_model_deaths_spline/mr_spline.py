@@ -66,16 +66,7 @@ class SplineFit:
         # get random knot placement
         if 'spline_knots' in list(spline_options.keys()):
             raise ValueError('Using random spline, do not manually specify knots.')
-        n_intervals = n_i_knots + 1
-        ensemble_knots = sample_knots(n_intervals, 
-                                      b=np.array([[0, 1]]*(n_intervals-1)),
-                                      d=np.array([[0.05, 1]]*n_intervals),
-                                      N=50)
-        _ensemble_knots = []
-        for knots in ensemble_knots:
-            if np.unique(np.quantile(data[spline_var], knots)).size == knots.size:
-                _ensemble_knots.append(knots)
-        ensemble_knots = np.vstack(_ensemble_knots)
+        ensemble_knots = self.get_ensemble_knots(n_i_knots, data[spline_var].values)
         
         # spline cov model
         spline_model = LinearCovModel(
@@ -99,6 +90,26 @@ class SplineFit:
                                cov_models=cov_models)
         self.submodel_fits = None
         self.coef_dicts = None
+        
+    @staticmethod
+    def get_ensemble_knots(n_i_knots: int, spline_data: np.array) -> List[np.array]:
+        # sample
+        n_intervals = n_i_knots + 1 - 2
+        ensemble_knots = sample_knots(n_intervals, 
+                                      b=np.array([[0.1, 0.9]]*(n_intervals-1)),
+                                      d=np.array([[0.05, 1]]*n_intervals),
+                                      N=50)
+        ensemble_knots = np.insert(ensemble_knots, 1, 0.05, 1)
+        ensemble_knots = np.insert(ensemble_knots, 1, 0.95, 1)
+        
+        # make sure we have unique knots
+        _ensemble_knots = []
+        for knots in ensemble_knots:
+            if np.unique(np.quantile(spline_data, knots)).size == knots.size:
+                _ensemble_knots.append(knots)
+        ensemble_knots = np.vstack(_ensemble_knots)
+        
+        return ensemble_knots
 
     def fit_model(self):
         self.mr_model.fit_model(inner_max_iter=30)

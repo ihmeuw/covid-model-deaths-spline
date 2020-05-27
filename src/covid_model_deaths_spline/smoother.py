@@ -79,7 +79,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_var: str,
     if not daily:
         y[1:] = np.diff(y, axis=0)
         smooth_y[1:] = np.diff(smooth_y)
-    if not log:
+    if not log or not daily:
         y = apply_floor(y, floor)
         smooth_y = apply_floor(smooth_y, floor)
     y = np.log(y)

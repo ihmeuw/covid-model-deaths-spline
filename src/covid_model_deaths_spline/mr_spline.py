@@ -94,13 +94,24 @@ class SplineFit:
     @staticmethod
     def get_ensemble_knots(n_i_knots: int, spline_data: np.array) -> List[np.array]:
         # sample
-        n_intervals = n_i_knots + 1 - 2
+        n_intervals = n_i_knots + 1
+        k_start = 0.
+        k_end = 1.
+        if n_i_knots >= 3:
+            if np.quantile(spline_data, (0, 0.05)).ptp() > 1e-10:
+                n_intervals -= 1
+                k_start = 0.1
+            if np.quantile(spline_data, (0.95, 1.)).ptp() > 1e-10:
+                n_intervals -= 1
+                k_end = 0.9
         ensemble_knots = sample_knots(n_intervals, 
-                                      b=np.array([[0.1, 0.9]]*(n_intervals-1)),
+                                      b=np.array([[k_start, k_end]]*(n_intervals-1)),
                                       d=np.array([[0.05, 1]]*n_intervals),
                                       N=50)
-        ensemble_knots = np.insert(ensemble_knots, 1, 0.05, 1)
-        ensemble_knots = np.insert(ensemble_knots, 1, 0.95, 1)
+        if k_start == 0.1:
+            ensemble_knots = np.insert(ensemble_knots, 1, 0.05, 1)
+        if k_end == 0.9:
+            ensemble_knots = np.insert(ensemble_knots, -1, 0.95, 1)
         
         # make sure we have unique knots
         _ensemble_knots = []

@@ -179,12 +179,13 @@ def plotter(df: pd.DataFrame, unadj_vars: List[str], plot_file: str):
     for i, smooth_variable in enumerate(unadj_vars):
         # cumulative
         raw_variable = smooth_variable.replace('Smoothed ', '').capitalize()
+        plot_label = raw_variable.lower().replace(' rate', 's')
         if ~df[raw_variable].isnull().all():
             if 'death' in smooth_variable.lower():
                 ax[0, i].plot(df['Date'], df[raw_variable] * df['population'], **raw_lines)
                 ax[0, i].scatter(df['Date'], df[raw_variable] * df['population'], **raw_points)
                 ax[1, i].set_xlabel('Date', fontsize=10)
-                ax[0, i].set_ylabel(f'Cumulative {raw_variable.lower()}', fontsize=10)
+                ax[0, i].set_ylabel(f'Cumulative {plot_label}', fontsize=10)
 
             # daily
             ax[1, i].plot(df['Date'][1:], 
@@ -198,7 +199,7 @@ def plotter(df: pd.DataFrame, unadj_vars: List[str], plot_file: str):
                 ax[1, i].set_xlabel('Date', fontsize=10)
             else:
                 ax[1, i].set_xlabel('Date (+8 days)', fontsize=10)
-            ax[1, i].set_ylabel(f'Daily {raw_variable.lower()}', fontsize=10)
+            ax[1, i].set_ylabel(f'Daily {plot_label}', fontsize=10)
 
     # model prediction
     ax[0, 0].plot(df['Date'], df['Predicted death rate'] * df['population'], 

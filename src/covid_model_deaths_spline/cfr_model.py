@@ -47,24 +47,15 @@ def cfr_model(df: pd.DataFrame, deaths_threshold: int,
 
     # run model and predict
     if (df[dep_var] * df['population']).max() > 20:
-        # cubic spline with linear tails
         n_i_knots = 4
-        spline_options={
-                'spline_knots_type': 'frequency',
-                'spline_degree': 3,
-                'spline_r_linear':True,
-                'spline_l_linear':True,
-                'prior_beta_uniform':np.array([0., np.inf]),
-            }
     else:
-        # linear spline
-        n_i_knots = 1
-        spline_options={
-                'spline_knots_type': 'frequency',
-                'spline_degree': 1,
-                'prior_beta_uniform':np.array([0., np.inf]),
-            }
-
+        n_i_knots = 3
+    spline_options={
+        'spline_knots_type': 'frequency',
+        'spline_degree': 3,
+        'spline_r_linear':True,
+        'spline_l_linear':True,
+    }
     if not daily:
         spline_options.update({'prior_spline_monotonicity':'increasing'})
     mr_mod = SplineFit(

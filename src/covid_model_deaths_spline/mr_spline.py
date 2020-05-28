@@ -148,13 +148,7 @@ class SplineFit:
         submodel_fits = [self.predict_submodel(sub_model, coef_dict, pred_data) for sub_model, coef_dict in
                          zip(self.mr_model.sub_models, self.coef_dicts)]
         submodel_fits = np.array(submodel_fits)
-        
-        # need to fix this
-        if np.isnan(self.mr_model.weights).all():
-            weights = np.ones((self.mr_model.num_sub_models, 1))
-            weights /= weights.sum()
-        else:
-            weights = np.array([self.mr_model.weights]).T
+        weights = np.array([self.mr_model.weights]).T
             
         return (submodel_fits * weights).sum(axis=0)
         

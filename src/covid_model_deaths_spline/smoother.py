@@ -117,26 +117,27 @@ def synthesize_time_series(df: pd.DataFrame,
     draw_cols = [col for col in draw_df.columns if col.startswith('draw_')]
     
     # add summary stats to dataset for plotting
-    df = df.sort_values('Date').set_index('Date')
-    draw_df = draw_df.sort_values('Date').set_index('Date')
-    df['Smoothed predicted death rate'] = np.mean(draw_df[draw_cols], axis=1)
-    df['Smoothed predicted death rate lower'] = np.percentile(draw_df[draw_cols], 2.5, axis=1)
-    df['Smoothed predicted death rate upper'] = np.percentile(draw_df[draw_cols], 97.5, axis=1)
-    df['Smoothed predicted daily death rate'] = np.nan
-    df['Smoothed predicted daily death rate'][1:] = np.mean(np.diff(draw_df[draw_cols], axis=0), 
-                                                            axis=1)
-    df['Smoothed predicted daily death rate lower'] = np.nan
-    df['Smoothed predicted daily death rate lower'][1:] = np.percentile(np.diff(draw_df[draw_cols], axis=0), 
-                                                                        2.5, axis=1)
-    df['Smoothed predicted daily death rate upper'] = np.nan
-    df['Smoothed predicted daily death rate upper'][1:] = np.percentile(np.diff(draw_df[draw_cols], axis=0), 
-                                                                        97.5, axis=1)
-    df = df.reset_index()
-    draw_df = draw_df.reset_index()
-    first_day = df['Date'] == df.groupby('location_id')['Date'].transform(min)
-    df.loc[first_day, 'Smoothed predicted daily death rate'] = df['Smoothed predicted death rate']
-    df.loc[first_day, 'Smoothed predicted daily death rate lower'] = df['Smoothed predicted death rate lower']
-    df.loc[first_day, 'Smoothed predicted daily death rate upper'] = df['Smoothed predicted death rate upper']
+    summ_df = draw_df.copy()
+    summ_df = summ_df.sort_values('Date')
+    summ_df['Smoothed predicted death rate'] = np.mean(summ_df[draw_cols], axis=1)
+    summ_df['Smoothed predicted death rate lower'] = np.percentile(summ_df[draw_cols], 2.5, axis=1)
+    summ_df['Smoothed predicted death rate upper'] = np.percentile(summ_df[draw_cols], 97.5, axis=1)
+    summ_df['Smoothed predicted daily death rate'] = np.nan
+    summ_df['Smoothed predicted daily death rate'][1:] = np.mean(np.diff(summ_df[draw_cols], axis=0), 
+                                                                 axis=1)
+    summ_df['Smoothed predicted daily death rate lower'] = np.nan
+    summ_df['Smoothed predicted daily death rate lower'][1:] = np.percentile(np.diff(summ_df[draw_cols], axis=0), 
+                                                                             2.5, axis=1)
+    summ_df['Smoothed predicted daily death rate upper'] = np.nan
+    summ_df['Smoothed predicted daily death rate upper'][1:] = np.percentile(np.diff(summ_df[draw_cols], axis=0), 
+                                                                             97.5, axis=1)
+    summ_df = summ_df[['Date'] + [i for i in summ_df.columns if i.startswith('Smoothed predicted')]]
+    
+    first_day = summ_df['Date'] == summ_df['Date'].min()
+    summ_df.loc[first_day, 'Smoothed predicted daily death rate'] = summ_df['Smoothed predicted death rate']
+    summ_df.loc[first_day, 'Smoothed predicted daily death rate lower'] = summ_df['Smoothed predicted death rate lower']
+    summ_df.loc[first_day, 'Smoothed predicted daily death rate upper'] = summ_df['Smoothed predicted death rate upper']
+    df = df.merge(summ_df, how='left')
     
     # format draw data for infectionator
     draw_df = draw_df.rename(index=str, columns={'Date':'date'})

@@ -43,6 +43,15 @@ def check_counts(df: pd.DataFrame, rate_var: str, action: str, threshold: int = 
     return df
 
 
+def enforce_monotonicity(df: pd.DataFrame, rate_var: str) -> pd.DataFrame:
+    vals = df[rate_var].values
+    fill_idx = np.array([~(vals[i] >= vals[:i]).all() for i in range(vals.size)])
+    df.loc[fill_idx, rate_var] = np.nan
+    df[rate_var] = df[rate_var].interpolate()
+    
+    return df.loc[~df[rate_var].isnull()]
+
+
 def main(location_set_version_id: int, inputs_version: str,
          run_label: str, n_holdout_days: int):
     # set up out dir
@@ -74,6 +83,18 @@ def main(location_set_version_id: int, inputs_version: str,
     # drop days of data as specified
     case_df = holdout_days(case_df, n_holdout_days)
     death_df = holdout_days(death_df, n_holdout_days)
+    
+    # force cumulative to be monotonically increasing
+    case_df = case_df.sort_values(['location_id', 'Date']).reset_index(drop=True)
+    case_df = (case_df
+               .groupby('location_id', as_index=False)
+               .apply(lambda x: enforce_monotonicity(x, 'Confirmed case rate'))
+               .reset_index(drop=True))
+    death_df = death_df.sort_values(['location_id', 'Date']).reset_index(drop=True)
+    death_df = (death_df
+                .groupby('location_id', as_index=False)
+                .apply(lambda x: enforce_monotonicity(x, 'Death rate'))
+                .reset_index(drop=True))
     
     # add some poorly behaving locations to missing list
     # Assam (4843); Meghalaya (4862)

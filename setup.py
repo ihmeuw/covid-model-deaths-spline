@@ -25,6 +25,9 @@ if __name__ == "__main__":
         'seaborn',
         'tqdm',
         'pypdf2',
+        'ipython',
+        'jupyter',
+        'jupyterlab'
     ]
 
     test_requirements = [

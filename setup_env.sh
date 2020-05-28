@@ -11,13 +11,15 @@ else
   eval "$(/ihme/covid-19/miniconda/bin/conda shell.bash hook)"
 fi
 
-echo "Creating environment covid-deaths-spline" &&
+dt=$(date '+%Y-%m-%d_%H-%M-%S') &&
+echo "Creating environment covid-deaths-spline-$dt" &&
 umask 002
-conda create -y --name=covid-deaths-spline -c conda-forge cyipopt python &&
-conda activate covid-deaths-spline &&
+conda create -y --name=covid-deaths-spline-"$dt" -c conda-forge cyipopt gmp python=3.6 &&
+conda activate covid-deaths-spline-"$dt" &&
+pip install --global-option=build_ext --global-option '-I'$CONDA_PREFIX'/include/' pycddlib &&
 git clone https://github.com/zhengp0/limetr.git &&
 cd limetr && make install && cd .. &&
 git clone https://github.com/ihmeuw-msca/MRTool.git &&
-cd MRTool && git checkout seiir_model && python setup.py install && cd .. &&
-rm -rf limetr MRTool SLIME &&
+cd MRTool && python setup.py install && cd .. &&
+rm -rf limetr MRTool &&
 python setup.py develop

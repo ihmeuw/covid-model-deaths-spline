@@ -4,6 +4,7 @@ from typing import List, Tuple
 
 from loguru import logger
 import pandas as pd
+import numpy as np
 
 
 def load_most_detailed_locations(inputs_root: Path) -> pd.DataFrame:
@@ -81,6 +82,16 @@ def holdout_days(df: pd.DataFrame, n_holdout_days: int) -> pd.DataFrame:
     return df
 
 
+def enforce_monotonicity(df: pd.DataFrame, rate_var: str) -> pd.DataFrame:
+    """Drop negatives and interpolate cumulative values."""
+    vals = df[rate_var].values
+    fill_idx = np.array([~(vals[i] >= vals[:i]).all() for i in range(vals.size)])
+    df.loc[fill_idx, rate_var] = np.nan
+    df[rate_var] = df[rate_var].interpolate()
+    
+    return df.loc[~df[rate_var].isnull()]
+
+
 def filter_data_by_location(data: pd.DataFrame, hierarchy: pd.DataFrame,
                             measure: str) -> Tuple[pd.DataFrame, List[int]]:
     """Filter data based on location presence in a hierarchy."""
@@ -109,19 +120,39 @@ def combine_data(case_data: pd.DataFrame, death_data: pd.DataFrame,
     return df
 
 
-def filter_to_two_cases_and_deaths(model_data: pd.DataFrame) -> pd.DataFrame:
-    """Drop locations that don't have at least two cases and two deaths."""
+def check_counts(model_data: pd.DataFrame, rate_var: str, action: str, threshold: int) -> pd.DataFrame:
+    """Act on locations with fewer than some number of deaths/cases."""
     df = model_data.copy()
-    df['Cases'] = model_data['Confirmed case rate'] * model_data['population']
-    df = df.loc[df.groupby('location_id')['Cases'].transform(max) >= 2].reset_index(drop=True)
-    del df['Cases']
-    df['Deaths'] = df['Death rate'] * df['population']
-    df = df.loc[df.groupby('location_id')['Deaths'].transform(max) >= 2].reset_index(drop=True)
-    del df['Deaths']
+    df['Count'] = df[rate_var] * df['population']
+    df['Count'] = df['Count'].fillna(0)
+    sub_thresh = df.groupby('location_id')['Count'].transform(max) <= threshold
+    logger.warning(f"Fewer than {threshold} {rate_var.lower().replace(' rate', 's')} for "
+                   f"{';'.join(df.loc[sub_thresh, 'location_name'].unique())}\n")
+    if action == 'fill_na':
+        # keep rows, make these columns uninformative
+        df.loc[sub_thresh, rate_var] = np.nan
+    elif action == 'drop':
+        # drop row entirely
+        df = df.loc[~sub_thresh].reset_index(drop=True)
+    else:
+        raise ValueError('Invalid action specified.')
+    del df['Count']
+    
+    return df
+
+
+def filter_to_threshold_cases_and_deaths(model_data: pd.DataFrame, threshold: int = 3) -> Tuple[pd.DataFrame, List[int]]:
+    """Drop locations that don't have at least `n` deaths; do not use cases if under `n`."""
+    df = model_data.copy()
+    df = check_counts(df, 'Confirmed case rate', 'fill_na', threshold)
+    days_w_cases = df['Confirmed case rate'].notnull().groupby(df['location_id']).sum()
+    no_cases_locs = days_w_cases[days_w_cases == 0].index.to_list()
+    df = check_counts(df, 'Death rate', 'drop', threshold)    
     dropped_locations = set(model_data['location_id']).difference(df['location_id'])
     if dropped_locations:
         logger.warning(f"Dropped {list(dropped_locations)} from data due to lack of cases or deaths.")
-    return df
+    
+    return df, no_cases_locs
 
 
 def fill_dates(df: pd.DataFrame) -> pd.DataFrame:

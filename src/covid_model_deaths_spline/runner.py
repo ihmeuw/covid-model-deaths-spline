@@ -4,7 +4,7 @@ import warnings
 from covid_shared import shell_tools, cli_tools
 from loguru import logger
 
-from covid_model_deaths_spline import data, cfr_model, pdf_merger
+from covid_model_deaths_spline import data, cfr_model, smoother, pdf_merger
 
 warnings.simplefilter('ignore')
 
@@ -35,23 +35,27 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
 
     model_data = data.combine_data(case_data, death_data, pop_data, hierarchy)
 
-    # add some poorly behaving locations to missing list
-    # Assam (4843); Meghalaya (4862)
-    # TODO: Move to a config file or something.
-    missing_locations = [4843, 4862] + missing_cases + missing_deaths + missing_pop
-    not_missing = ~model_data['location_id'].isin(missing_locations)
-    model_data = model_data.loc[not_missing]
+    # # add some poorly behaving locations to missing list
+    # # Assam (4843); Meghalaya (4862)
+    # # TODO: Move to a config file or something.
+    # missing_locations = [4843, 4862] # + missing_cases + missing_deaths + missing_pop
+    # not_missing = ~model_data['location_id'].isin(missing_locations)
+    # model_data = model_data.loc[not_missing]
 
-    model_data = data.filter_to_two_cases_and_deaths(model_data)
+    model_data, no_cases_locs = data.filter_to_threshold_cases_and_deaths(model_data)
 
     # fit model
     var_dict = {'dep_var': 'Death rate',
                 'spline_var': 'Confirmed case rate',
                 'indep_vars': []}
     logger.debug('Launching CFR model.')
-    model_data = cfr_model.cfr_model_parallel(model_data, model_dir, **var_dict)
+    no_cases = model_data['location_id'].isin(no_cases_locs)
+    no_cases_data = model_data.loc[no_cases]
+    model_data = cfr_model.cfr_model_parallel(model_data.loc[~no_cases], model_dir, **var_dict)
+    model_data = model_data.append(no_cases_df)
+    
     logger.debug('Synthesizing time series.')
-    draw_df = cfr_model.synthesize_time_series_parallel(model_data, plot_dir, **var_dict)
+    draw_df = smoother.synthesize_time_series_parallel(model_data, plot_dir, **var_dict)
 
     logger.debug("Synthesizing plots.")
     pdf_merger.pdf_merger(indir=plot_dir, outfile=str(output_root / 'model_results.pdf'))

@@ -4,6 +4,7 @@ from typing import List, Tuple
 
 from loguru import logger
 import pandas as pd
+import numpy as np
 
 
 def load_most_detailed_locations(inputs_root: Path) -> pd.DataFrame:

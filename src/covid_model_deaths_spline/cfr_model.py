@@ -35,7 +35,6 @@ def cfr_model_parallel(data: pd.DataFrame,
 
 def cfr_model(location_id: int,
               data: pd.DataFrame,
-              model_dir: str,
               deaths_threshold: Callable[[pd.DataFrame], int],
               daily: bool,
               log: bool,

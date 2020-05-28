@@ -42,7 +42,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     # not_missing = ~model_data['location_id'].isin(missing_locations)
     # model_data = model_data.loc[not_missing]
 
-    model_data = data.filter_to_threshold_cases_and_deaths(model_data)
+    model_data, no_cases_locs = data.filter_to_threshold_cases_and_deaths(model_data)
 
     # fit model
     var_dict = {'dep_var': 'Death rate',

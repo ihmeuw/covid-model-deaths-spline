@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
-from mrtool import MRData, LinearCovModel, MRBeRT
-from mrtool.utils import sample_knots
+from mrtool import MRData, LinearCovModel, MRBeRT, utils
 from typing import List, Dict
 
 
@@ -92,7 +91,7 @@ class SplineFit:
         self.coef_dicts = None
         
     @staticmethod
-    def get_ensemble_knots(n_i_knots: int, spline_data: np.array) -> List[np.array]:
+    def get_ensemble_knots(n_i_knots: int, spline_data: np.array, N: int = 50) -> List[np.array]:
         # sample
         n_intervals = n_i_knots + 1
         k_start = 0.
@@ -104,10 +103,10 @@ class SplineFit:
             if np.quantile(spline_data, (0.95, 1.)).ptp() > 1e-10:
                 n_intervals -= 1
                 k_end = 0.9
-        ensemble_knots = sample_knots(n_intervals, 
-                                      b=np.array([[k_start, k_end]]*(n_intervals-1)),
-                                      d=np.array([[0.05, 1]]*n_intervals),
-                                      N=50)
+        ensemble_knots = utils.sample_knots(n_intervals, 
+                                            b=np.array([[k_start, k_end]]*(n_intervals-1)),
+                                            d=np.array([[0.05, 1]]*n_intervals),
+                                            N=N)
         if k_start == 0.1:
             ensemble_knots = np.insert(ensemble_knots, 1, 0.05, 1)
         if k_end == 0.9:

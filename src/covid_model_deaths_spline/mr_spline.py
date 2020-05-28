@@ -164,6 +164,5 @@ class SplineFit:
             else:
                 mat = pred_data[[variable]].values
             preds += [mat.dot(coef)]
-        
+
         return np.sum(preds, axis=0)
-    

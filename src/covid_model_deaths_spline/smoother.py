@@ -1,10 +1,9 @@
+from typing import List
+
 import pandas as pd
 import numpy as np
-from scipy import stats
-import matplotlib.pyplot as plt
-import seaborn as sns
-from typing import List
-from mr_spline import SplineFit
+
+from covid_model_deaths_spline.mr_spline import SplineFit
 
 
 def apply_floor(vals: np.array, floor_val: float) -> np.array:
@@ -56,7 +55,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_var: str,
         if not daily:
             spline_options.update({'prior_spline_monotonicity':'increasing'})
         mr_mod = SplineFit(
-            data=mod_df, 
+            data=mod_df,
             dep_var='y',
             spline_var='x',
             indep_vars=['intercept'], 
@@ -100,13 +99,29 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_var: str,
     draw_df['Smooth log'] = log
     draw_df['Smooth daily'] = daily
     draw_df = pd.concat([draw_df, pd.DataFrame(draws, columns=[f'draw_{d}' for d in range(n_draws)])], axis=1)
-        
+
     return draw_df
 
-def synthesize_time_series(df: pd.DataFrame, 
-                           #daily: bool, log: bool, 
+
+def synthesize_time_series_parallel(data: pd.DataFrame,
+                                    plot_dir: Path,
+                                    **model_args) -> pd.DataFrame:
+    _combiner = functools.partial(synthesize_time_series,
+                                  data=data, plot_dir=plot_dir,
+                                  daily=daily, log=log, **model_args)
+    location_ids = data['location_id'].unique().tolist()
+    with multiprocessing.Pool(20) as p:
+        draw_data_dfs = list(tqdm.tqdm(p.imap(_combiner, location_ids), total=len(location_ids)))
+    return pd.concat(draw_data_dfs).reset_index(drop=True)
+
+
+def synthesize_time_series(location_id: int,
+                           data: pd.DataFrame,
                            dep_var: str, spline_var: str, indep_vars: List[str],
-                           n_draws: int = 1000, plot_dir: str =None) -> pd.DataFrame:
+                           n_draws: int = 1000, plot_dir: str = None) -> pd.DataFrame:
+    # location data
+    df = data[data.location_id == location_id]
+    
     # spline on output (first determine space based on number of deaths)
     log = True
     if (df['Death rate'] * df['population']).max() < 20:

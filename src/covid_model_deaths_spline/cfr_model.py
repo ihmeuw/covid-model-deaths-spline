@@ -1,17 +1,51 @@
-import numpy as np
-import pandas as pd
+import functools
+import multiprocessing
+from pathlib import Path
+from typing import Callable, List
+
 import dill as pickle
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 import seaborn as sns
-from typing import List, Dict
-from smoother import smoother
-from mr_spline import SplineFit
+import tqdm
+
+from covid_model_deaths_spline.mr_spline import SplineFit
 
 
-def cfr_model(df: pd.DataFrame, deaths_threshold: int, 
-              daily: bool, log: bool, 
+def cfr_death_threshold(data: pd.DataFrame) -> int:
+    return max(1, int((data['Death rate'] * data['population']).max() * 0.01))
+
+
+def cfr_model_parallel(data: pd.DataFrame,
+                       model_dir: Path,
+                       deaths_threshold: Callable[[pd.DataFrame], int] = cfr_death_threshold,
+                       daily: bool = False,
+                       log: bool = True,
+                       **model_args) -> pd.DataFrame:
+    _combiner = functools.partial(cfr_model,
+                                  data=data, model_dir=model_dir,
+                                  deaths_threshold=deaths_threshold,
+                                  daily=daily, log=log, **model_args)
+    location_ids = data['location_id'].unique().tolist()
+    with multiprocessing.Pool(20) as p:
+        model_data_dfs = list(tqdm.tqdm(p.imap(_combiner, location_ids), total=len(location_ids)))
+    return pd.concat(model_data_dfs).reset_index(drop=True)
+
+
+def cfr_model(location_id: int,
+              data: pd.DataFrame,
+              model_dir: str,
+              deaths_threshold: Callable[[pd.DataFrame], int],
+              daily: bool,
+              log: bool,
               dep_var: str, spline_var: str, indep_vars: List[str],
               model_dir: str) -> pd.DataFrame:
+    # set up model
+    np.random.seed(location_id)
+    df = data[data.location_id == location_id]
+    deaths_threshold = deaths_threshold(df)
+
     # add intercept
     df['intercept'] = 1
 
@@ -59,7 +93,7 @@ def cfr_model(df: pd.DataFrame, deaths_threshold: int,
     if not daily:
         spline_options.update({'prior_spline_monotonicity':'increasing'})
     mr_mod = SplineFit(
-        data=mod_df, 
+        data=mod_df,
         dep_var=adj_vars[dep_var],
         spline_var=adj_vars[spline_var],
         indep_vars=['intercept'] + list(map(adj_vars.get, indep_vars)),
@@ -74,8 +108,8 @@ def cfr_model(df: pd.DataFrame, deaths_threshold: int,
         df['Predicted death rate'] = np.exp(df['Predicted death rate'])
     if daily:
         df['Predicted death rate'] = df['Predicted death rate'].cumsum()
-    
+
     with open(f"{model_dir}/{df['location_id'][0]}.pkl", 'wb') as fwrite:
         pickle.dump(mr_mod, fwrite, -1)
-    
+
     return df

@@ -1,7 +1,7 @@
-import sys
 import os
 
 from PyPDF2 import PdfFileMerger
+
 
 def pdf_merger(pdfs=None, indir=None, outfile=None):
     # how are inputs specified

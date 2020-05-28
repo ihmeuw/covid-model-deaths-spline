@@ -108,7 +108,7 @@ def synthesize_time_series_parallel(data: pd.DataFrame,
                                     **model_args) -> pd.DataFrame:
     _combiner = functools.partial(synthesize_time_series,
                                   data=data, plot_dir=plot_dir,
-                                  daily=daily, log=log, **model_args)
+                                  **model_args)
     location_ids = data['location_id'].unique().tolist()
     with multiprocessing.Pool(20) as p:
         draw_data_dfs = list(tqdm.tqdm(p.imap(_combiner, location_ids), total=len(location_ids)))

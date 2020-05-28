@@ -47,7 +47,7 @@ def cfr_model(df: pd.DataFrame, deaths_threshold: int,
 
     # run model and predict
     if (df[dep_var] * df['population']).max() > 20:
-        n_i_knots = 4
+        n_i_knots = 5
     else:
         n_i_knots = 3
     spline_options={

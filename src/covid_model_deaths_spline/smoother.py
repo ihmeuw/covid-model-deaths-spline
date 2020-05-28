@@ -48,10 +48,10 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_var: str,
         })
         mod_df['observed'] = mod_df['observed'].astype(bool)
         spline_options={
-                'spline_knots_type': 'domain',
+                'spline_knots_type': 'frequency',
                 'spline_degree': 3,
                 'spline_r_linear':True,
-                'spline_l_linear':True
+                'spline_l_linear':True,
             }
         if not daily:
             spline_options.update({'prior_spline_monotonicity':'increasing'})
@@ -60,9 +60,9 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_var: str,
             dep_var='y',
             spline_var='x',
             indep_vars=['intercept'], 
-            n_i_knots=4,
+            n_i_knots=5,
             spline_options=spline_options,
-            scale_se=daily,
+            scale_se=True,
             observed_var='observed',
             pseudo_se_multiplier=1.33
         )

@@ -35,19 +35,6 @@ def cfr_model_parallel(data: pd.DataFrame,
     return pd.concat(model_data_dfs).reset_index(drop=True)
 
 
-@dataclass
-class CFRModelSettings:
-    model_dir: str
-    daily: bool = field(default=False)
-    log: bool = field(default=True)
-    dep_var: str = field(default='Death rate')
-    spline_var: str = field(default='Confirmed case rate')
-    indep_vars: List[str] = field(default_factory=list)
-
-    def to_dict(self):
-        return asdict(self)
-
-
 def cfr_model(location_id: int,
               data: pd.DataFrame,
               daily: bool,

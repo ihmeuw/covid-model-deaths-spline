@@ -1,14 +1,16 @@
+from dataclasses import asdict, dataclass, field
 import functools
 import multiprocessing
 from pathlib import Path
 from typing import Callable, List
+import sys
 
+from covid_shared import shell_tools
 import dill as pickle
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
 import tqdm
+import yaml
 
 from covid_model_deaths_spline.mr_spline import SplineFit
 
@@ -33,9 +35,21 @@ def cfr_model_parallel(data: pd.DataFrame,
     return pd.concat(model_data_dfs).reset_index(drop=True)
 
 
+@dataclass
+class CFRModelSettings:
+    model_dir: str
+    daily: bool = field(default=False)
+    log: bool = field(default=True)
+    dep_var: str = field(default='Death rate')
+    spline_var: str = field(default='Confirmed case rate')
+    indep_vars: List[str] = field(default_factory=list)
+
+    def to_dict(self):
+        return asdict(self)
+
+
 def cfr_model(location_id: int,
               data: pd.DataFrame,
-              deaths_threshold: Callable[[pd.DataFrame], int],
               daily: bool,
               log: bool,
               dep_var: str, spline_var: str, indep_vars: List[str],
@@ -43,7 +57,7 @@ def cfr_model(location_id: int,
     # set up model
     np.random.seed(location_id)
     df = data[data.location_id == location_id]
-    deaths_threshold = deaths_threshold(df)
+    deaths_threshold = cfr_death_threshold(df)
 
     # add intercept
     df['intercept'] = 1
@@ -112,3 +126,25 @@ def cfr_model(location_id: int,
         pickle.dump(mr_mod, fwrite, -1)
 
     return df
+
+
+def cfr_model_cluster(location_id: int, data_path: str, settings_path: str):
+    data = pd.read_csv(data_path)
+    data['Date'] = pd.to_datetime(data['Date'])
+
+    with Path(settings_path).open() as settings_file:
+        settings = yaml.full_load(settings_file)
+
+    output_dir = Path(settings['results_dir'])
+    shell_tools.mkdir(output_dir)
+    result = cfr_model(location_id, data, **settings)
+    with output_dir / f'{location_id}.pkl'
+    result.to_csv(output_dir / f'{location_id}.csv')
+
+
+if __name__ == '__main__':
+    loc_id = int(sys.argv[1])
+    data = sys.argv[2]
+    settings = sys.argv[3]
+
+    cfr_model_cluster(loc_id, data, settings)

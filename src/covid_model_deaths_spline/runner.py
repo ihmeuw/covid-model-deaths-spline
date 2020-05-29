@@ -1,15 +1,19 @@
 from pathlib import Path
+import tempfile
 import warnings
 
 from covid_shared import shell_tools, cli_tools
+import dill as pickle
 from loguru import logger
+import yaml
 
-from covid_model_deaths_spline import data, cfr_model, smoother, pdf_merger
+from covid_model_deaths_spline import data, cfr_model, smoother, pdf_merger, cluster
 
 warnings.simplefilter('ignore')
 
 
-def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root: Path, holdout_days: int):
+def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root: Path,
+                holdout_days: int, do_qsub: bool):
     logger.debug("Setting up output directories.")
     model_dir = output_root / 'models'
     plot_dir = output_root / 'plots'
@@ -45,17 +49,53 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     model_data, no_cases_locs = data.filter_to_threshold_cases_and_deaths(model_data)
 
     # fit model
-    var_dict = {'dep_var': 'Death rate',
+    shared_settings = {'dep_var': 'Death rate',
                 'spline_var': 'Confirmed case rate',
                 'indep_vars': []}
+
     logger.debug('Launching CFR model.')
+    cfr_settings = {'model_dir': str(model_dir),
+                    'daily': False,
+                    'log': True}
+    cfr_settings.update(shared_settings)
+
     no_cases = model_data['location_id'].isin(no_cases_locs)
     no_cases_data = model_data.loc[no_cases]
-    model_data = cfr_model.cfr_model_parallel(model_data.loc[~no_cases], model_dir, **var_dict)
+
+    if do_qsub:
+        job_type = 'cfr_model'
+
+        with tempfile.TemporaryDirectory() as working_dir:
+            data_path = Path(working_dir) / 'model_data.pkl'
+            cfr_input_data = model_data.loc[~no_cases]
+            with data_path.open('wb') as data_file:
+                pickle.dump(cfr_input_data, data_file, -1)
+
+            results_path = Path(working_dir) / 'cfr_outputs'
+            cfr_settings['results_dir'] = str(results_path)
+
+            settings_path = Path(working_dir) / 'settings.yaml'
+            with settings_path.open('w') as settings_file:
+                yaml.dump(cfr_settings, settings_file)
+
+            job_args_map = {
+                location_id: [cfr_model.__file__, location_id, data_path, settings_path]
+                for location_id in cfr_input_data['location_id'].unique()
+            }
+            cluster.run_cluster_jobs(job_type, output_root, job_args_map)
+
+            results = []
+            for result_path in results_path.iterdir():
+                with result_path.open() as result_file:
+                    results.append(pickle.load(result_file))
+            model_data = pd.concat(results)
+    else:
+        model_data = cfr_model.cfr_model_parallel(model_data.loc[~no_cases], model_dir, **shared_settings)
+
     model_data = model_data.append(no_cases_data)
 
     logger.debug('Synthesizing time series.')
-    draw_df = smoother.synthesize_time_series_parallel(model_data, plot_dir, **var_dict)
+    draw_df = smoother.synthesize_time_series_parallel(model_data, plot_dir, **shared_settings)
 
     logger.debug("Synthesizing plots.")
     pdf_merger.pdf_merger(indir=plot_dir, outfile=str(output_root / 'model_results.pdf'))

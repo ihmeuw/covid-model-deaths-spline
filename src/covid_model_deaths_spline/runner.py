@@ -52,8 +52,8 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     no_cases = model_data['location_id'].isin(no_cases_locs)
     no_cases_data = model_data.loc[no_cases]
     model_data = cfr_model.cfr_model_parallel(model_data.loc[~no_cases], model_dir, **var_dict)
-    model_data = model_data.append(no_cases_df)
-    
+    model_data = model_data.append(no_cases_data)
+
     logger.debug('Synthesizing time series.')
     draw_df = smoother.synthesize_time_series_parallel(model_data, plot_dir, **var_dict)
 

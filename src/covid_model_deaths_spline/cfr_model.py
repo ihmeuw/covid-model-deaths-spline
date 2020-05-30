@@ -39,7 +39,7 @@ def cfr_model(location_id: int,
               daily: bool,
               log: bool,
               dep_var: str, spline_var: str, indep_vars: List[str],
-              model_dir: str) -> pd.DataFrame:
+              model_dir: str, **_) -> pd.DataFrame:
     # set up model
     np.random.seed(location_id)
     df = data[data.location_id == location_id]
@@ -122,7 +122,6 @@ def cfr_model_cluster(location_id: int, data_path: str, settings_path: str):
         cfr_settings = yaml.full_load(settings_file)
 
     output_dir = Path(cfr_settings['results_dir'])
-    shell_tools.mkdir(output_dir, exists_ok=True)
     result = cfr_model(location_id, in_data, **cfr_settings)
     with (output_dir / f'{location_id}.pkl').open('wb') as outfile:
         pickle.dump(result, outfile, -1)

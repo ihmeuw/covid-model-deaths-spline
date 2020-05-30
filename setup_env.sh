@@ -17,9 +17,9 @@ umask 002
 conda create -y --name=covid-deaths-spline-"$dt" -c conda-forge cyipopt gmp python=3.6 &&
 conda activate covid-deaths-spline-"$dt" &&
 pip install --global-option=build_ext --global-option '-I'$CONDA_PREFIX'/include/' pycddlib &&
+pip install drmaa &&
 git clone https://github.com/zhengp0/limetr.git &&
 cd limetr && make install && cd .. &&
 git clone https://github.com/ihmeuw-msca/MRTool.git &&
-cd MRTool && python setup.py install && cd .. &&
-rm -rf limetr MRTool &&
-python setup.py develop
+cd MRTool && git checkout el_hombre_elastico && pip install . && cd .. &&
+pip install -e .

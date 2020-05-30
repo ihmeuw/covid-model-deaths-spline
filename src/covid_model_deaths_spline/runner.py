@@ -38,20 +38,12 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     pop_data, missing_pop = data.filter_data_by_location(pop_data, hierarchy, 'population')
 
     model_data = data.combine_data(case_data, death_data, pop_data, hierarchy)
-
-    # # add some poorly behaving locations to missing list
-    # # Assam (4843); Meghalaya (4862)
-    # # TODO: Move to a config file or something.
-    # missing_locations = [4843, 4862] # + missing_cases + missing_deaths + missing_pop
-    # not_missing = ~model_data['location_id'].isin(missing_locations)
-    # model_data = model_data.loc[not_missing]
-
     model_data, no_cases_locs = data.filter_to_threshold_cases_and_deaths(model_data)
 
     # fit model
     shared_settings = {'dep_var': 'Death rate',
-                'spline_var': 'Confirmed case rate',
-                'indep_vars': []}
+                       'spline_var': 'Confirmed case rate',
+                       'indep_vars': []}
 
     logger.debug('Launching CFR model.')
     cfr_settings = {'model_dir': str(model_dir),
@@ -63,6 +55,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     no_cases_data = model_data.loc[no_cases]
 
     if do_qsub:
+        logger.debug('Submitting CFR jobs with qsubs')
         job_type = 'cfr_model'
 
         with tempfile.TemporaryDirectory() as working_dir:

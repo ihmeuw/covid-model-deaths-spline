@@ -81,7 +81,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
 
         results = []
         for result_path in results_path.iterdir():
-            with result_path.open() as result_file:
+            with result_path.open('rb') as result_file:
                 results.append(pickle.load(result_file))
         model_data = pd.concat(results)
     else:

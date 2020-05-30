@@ -130,3 +130,7 @@ dmypy.json
 
 # Pycharm settings
 .idea/
+
+# Git cloned dependencies
+MRTool/
+limetr/

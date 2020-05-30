@@ -49,9 +49,9 @@ def run_cluster_jobs(job_type: str, output_root: Path, job_args_map: Dict[int, L
     logger.info('**Done**')
 
 
-def do_qsub(session, job_name: str, output_root: Path, script_args: List[str]):
-    error_logs = output_root / job_name / 'error'
-    output_logs = output_root / job_name / 'output'
+def do_qsub(session, job_type: str, job_name: str, output_root: Path, script_args: List[str]):
+    error_logs = output_root / 'logs' / job_type / 'error'
+    output_logs = output_root / 'logs' / job_type / 'output'
     shell_tools.mkdir(error_logs, exists_ok=True)
     shell_tools.mkdir(output_logs, exists_ok=True)
 

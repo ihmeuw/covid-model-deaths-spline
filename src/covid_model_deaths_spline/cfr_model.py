@@ -115,8 +115,8 @@ def cfr_model(location_id: int,
 
 
 def cfr_model_cluster(location_id: int, data_path: str, settings_path: str):
-    in_data = pd.read_csv(data_path)
-    in_data['Date'] = pd.to_datetime(in_data['Date'])
+    with Path(data_path).open('rb') as in_file:
+        in_data = pickle.load(in_file)
 
     with Path(settings_path).open() as settings_file:
         cfr_settings = yaml.full_load(settings_file)

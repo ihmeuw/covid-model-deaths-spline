@@ -59,7 +59,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
         logger.debug('Submitting CFR jobs with qsubs')
         job_type = 'cfr_model'
 
-        with tempfile.TemporaryDirectory() as working_dir:
+        with tempfile.TemporaryDirectory(prefix=output_root) as working_dir:
             data_path = Path(working_dir) / 'model_data.pkl'
             cfr_input_data = model_data.loc[~no_cases]
             with data_path.open('wb') as data_file:

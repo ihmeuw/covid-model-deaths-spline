@@ -66,6 +66,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
                 pickle.dump(cfr_input_data, data_file, -1)
 
             results_path = Path(working_dir) / 'cfr_outputs'
+            shell_tools.mkdir(results_path)
             cfr_settings['results_dir'] = str(results_path)
 
             settings_path = Path(working_dir) / 'settings.yaml'

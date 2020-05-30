@@ -69,7 +69,7 @@ def do_qsub(session, job_type: str, job_name: str, output_root: Path, script_arg
                                         f'-l h_rt={H_RUNTIME} '
                                         f'-N {job_name}')  # Name of the job
     job = session.runJob(job_template)
-    logger.info(f'Submitted job {job}.')
+    logger.info(f'Submitted job {job_name} with id {job}.')
     session.deleteJobTemplate(job_template)
     return job
 

@@ -1,4 +1,5 @@
 from collections import Counter
+import os
 from pathlib import Path
 import shutil
 import time
@@ -17,7 +18,7 @@ SLEEP_TIME = 10
 
 
 def run_cluster_jobs(job_type: str, output_root: Path, job_args_map: Dict[int, List[str]]) -> None:
-    import drmaa
+    drmaa = get_drmaa()
     jobs = {}
     with drmaa.Session() as session:
         logger.info(f"Enqueuing {job_type} jobs...")
@@ -75,7 +76,7 @@ def do_qsub(session, job_name: str, output_root: Path, script_args: List[str]):
 
 def decode_status(job_status):
     """Decodes a UGE job status into a string for logging"""
-    import drmaa
+    drmaa = get_drmaa()
     decoder_map = {drmaa.JobState.UNDETERMINED: 'undetermined',
                    drmaa.JobState.QUEUED_ACTIVE: 'queued_active',
                    drmaa.JobState.SYSTEM_ON_HOLD: 'system_hold',
@@ -88,3 +89,14 @@ def decode_status(job_status):
                    drmaa.JobState.FAILED: 'failed'}
 
     return decoder_map[job_status]
+
+def get_drmaa():
+    try:
+        import drmaa
+    except (RuntimeError, OSError):
+        if 'SGE_CLUSTER_NAME' in os.environ:
+            os.environ['DRMAA_LIBRARY_PATH'] = '/opt/sge/lib/lx-amd64/libdrmaa.so'
+            import drmaa
+        else:
+            drmaa = object()
+    return drmaa

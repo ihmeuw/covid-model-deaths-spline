@@ -24,7 +24,7 @@ def run_cluster_jobs(job_type: str, output_root: Path, job_args_map: Dict[int, L
         logger.info(f"Enqueuing {job_type} jobs...")
         for job_id, job_args in job_args_map.items():
             job_name = f'{job_type}_{job_id}'
-            job = do_qsub(session, job_name, output_root, job_args)
+            job = do_qsub(session, job_type, job_name, output_root, job_args)
             jobs[job_name] = (job, drmaa.JobState.UNDETERMINED)
 
         logger.info('Entering monitoring loop.')

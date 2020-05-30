@@ -1,5 +1,4 @@
 from pathlib import Path
-import tempfile
 import warnings
 
 from covid_shared import shell_tools, cli_tools
@@ -59,31 +58,32 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
         logger.debug('Submitting CFR jobs with qsubs')
         job_type = 'cfr_model'
 
-        with tempfile.TemporaryDirectory(prefix=output_root) as working_dir:
-            data_path = Path(working_dir) / 'model_data.pkl'
-            cfr_input_data = model_data.loc[~no_cases]
-            with data_path.open('wb') as data_file:
-                pickle.dump(cfr_input_data, data_file, -1)
+        working_dir = output_root / 'cfr_working_dir'
+        shell_tools.mkdir(working_dir)
+        data_path = Path(working_dir) / 'model_data.pkl'
+        cfr_input_data = model_data.loc[~no_cases]
+        with data_path.open('wb') as data_file:
+            pickle.dump(cfr_input_data, data_file, -1)
 
-            results_path = Path(working_dir) / 'cfr_outputs'
-            shell_tools.mkdir(results_path)
-            cfr_settings['results_dir'] = str(results_path)
+        results_path = Path(working_dir) / 'cfr_outputs'
+        shell_tools.mkdir(results_path)
+        cfr_settings['results_dir'] = str(results_path)
 
-            settings_path = Path(working_dir) / 'settings.yaml'
-            with settings_path.open('w') as settings_file:
-                yaml.dump(cfr_settings, settings_file)
+        settings_path = Path(working_dir) / 'settings.yaml'
+        with settings_path.open('w') as settings_file:
+            yaml.dump(cfr_settings, settings_file)
 
-            job_args_map = {
-                location_id: [cfr_model.__file__, location_id, data_path, settings_path]
-                for location_id in cfr_input_data['location_id'].unique()
-            }
-            cluster.run_cluster_jobs(job_type, output_root, job_args_map)
+        job_args_map = {
+            location_id: [cfr_model.__file__, location_id, data_path, settings_path]
+            for location_id in cfr_input_data['location_id'].unique()
+        }
+        cluster.run_cluster_jobs(job_type, output_root, job_args_map)
 
-            results = []
-            for result_path in results_path.iterdir():
-                with result_path.open() as result_file:
-                    results.append(pickle.load(result_file))
-            model_data = pd.concat(results)
+        results = []
+        for result_path in results_path.iterdir():
+            with result_path.open() as result_file:
+                results.append(pickle.load(result_file))
+        model_data = pd.concat(results)
     else:
         model_data = cfr_model.cfr_model_parallel(model_data.loc[~no_cases], model_dir, **shared_settings)
 

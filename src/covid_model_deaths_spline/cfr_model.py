@@ -1,4 +1,3 @@
-from dataclasses import asdict, dataclass, field
 import functools
 import multiprocessing
 from pathlib import Path
@@ -116,17 +115,17 @@ def cfr_model(location_id: int,
 
 
 def cfr_model_cluster(location_id: int, data_path: str, settings_path: str):
-    data = pd.read_csv(data_path)
-    data['Date'] = pd.to_datetime(data['Date'])
+    in_data = pd.read_csv(data_path)
+    in_data['Date'] = pd.to_datetime(in_data['Date'])
 
     with Path(settings_path).open() as settings_file:
-        settings = yaml.full_load(settings_file)
+        cfr_settings = yaml.full_load(settings_file)
 
-    output_dir = Path(settings['results_dir'])
+    output_dir = Path(cfr_settings['results_dir'])
     shell_tools.mkdir(output_dir)
-    result = cfr_model(location_id, data, **settings)
-    with output_dir / f'{location_id}.pkl'
-    result.to_csv(output_dir / f'{location_id}.csv')
+    result = cfr_model(location_id, in_data, **cfr_settings)
+    with (output_dir / f'{location_id}.pkl').open('wb') as outfile:
+        pickle.dump(result, outfile, -1)
 
 
 if __name__ == '__main__':

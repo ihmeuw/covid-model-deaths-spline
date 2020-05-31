@@ -1,4 +1,5 @@
 import functools
+from itertools import compress
 import multiprocessing
 from pathlib import Path
 from typing import List
@@ -166,6 +167,7 @@ def synthesize_time_series(location_id: int,
     summ_df.loc[first_day, 'Smoothed predicted daily death rate lower'] = summ_df['Smoothed predicted death rate lower']
     summ_df.loc[first_day, 'Smoothed predicted daily death rate upper'] = summ_df['Smoothed predicted death rate upper']
     df = df.merge(summ_df, how='left')
+    df = df.sort_values('Date')
 
     # format draw data for infectionator
     draw_df = draw_df.rename(index=str, columns={'Date':'date'})
@@ -175,7 +177,7 @@ def synthesize_time_series(location_id: int,
     # plot
     if plot_dir is not None:
         plotter(df,
-                [dep_var] + indep_vars,
+                [dep_var] + list(compress(indep_vars, (~df[indep_vars].isnull().all(axis=0)).to_list())),
                 f"{plot_dir}/{df['location_id'][0]}.pdf")
 
     return draw_df
@@ -195,30 +197,34 @@ def plotter(df: pd.DataFrame, unadj_vars: List[str], plot_file: str):
     smoothed_pred_area = {'color':'firebrick', 'alpha':0.25}
 
     # cases
-    ax[0, 1].scatter(df['Confirmed case rate'],
-                     df['Death rate'],
-                     **raw_points)
-    ax[0, 1].plot(df.loc[~df['Death rate'].isnull(), 'Confirmed case rate'],
-                  df.loc[~df['Death rate'].isnull(), 'Predicted death rate (CFR)'],
-                  **cfr_lines)
-    ax[0, 1].plot(df.loc[~df['Death rate'].isnull(), 'Confirmed case rate'],
-                  df.loc[~df['Death rate'].isnull(), 'Smoothed predicted death rate'],
-                  **smoothed_pred_lines)    
-    ax[0, 1].set_xlabel('Cumulative case rate', fontsize=10)
-    ax[0, 1].set_ylabel('Cumulative death rate', fontsize=10)
+    indep_idx = 1
+    if 'Confirmed case rate' in unadj_vars:
+        ax[0, indep_idx].scatter(df['Confirmed case rate'],
+                                 df['Death rate'],
+                                 **raw_points)
+        ax[0, indep_idx].plot(df.loc[~df['Death rate'].isnull(), 'Confirmed case rate'],
+                              df.loc[~df['Death rate'].isnull(), 'Predicted death rate (CFR)'],
+                              **cfr_lines)
+        ax[0, indep_idx].plot(df.loc[~df['Death rate'].isnull(), 'Confirmed case rate'],
+                              df.loc[~df['Death rate'].isnull(), 'Smoothed predicted death rate'],
+                              **smoothed_pred_lines)    
+        ax[0, indep_idx].set_xlabel('Cumulative case rate', fontsize=10)
+        ax[0, indep_idx].set_ylabel('Cumulative death rate', fontsize=10)
+        indep_idx += 1
 
     # hospitalizations
-    ax[0, 2].scatter(df['Hospitalization rate'],
-                     df['Death rate'],
-                     **raw_points)
-    ax[0, 2].plot(df.loc[~df['Death rate'].isnull(), 'Hospitalization rate'],
-                  df.loc[~df['Death rate'].isnull(), 'Predicted death rate (HFR)'],
-                  **hfr_lines)
-    ax[0, 2].plot(df.loc[~df['Death rate'].isnull(), 'Hospitalization rate'],
-                  df.loc[~df['Death rate'].isnull(), 'Smoothed predicted death rate'],
-                  **smoothed_pred_lines)
-    ax[0, 2].set_xlabel('Cumulative hospitalization rate', fontsize=10)
-    ax[0, 2].set_ylabel('Cumulative death rate', fontsize=10)
+    if 'Hospitalization rate' in unadj_vars:
+        ax[0, indep_idx].scatter(df['Hospitalization rate'],
+                                 df['Death rate'],
+                                 **raw_points)
+        ax[0, indep_idx].plot(df.loc[~df['Death rate'].isnull(), 'Hospitalization rate'],
+                              df.loc[~df['Death rate'].isnull(), 'Predicted death rate (HFR)'],
+                              **hfr_lines)
+        ax[0, indep_idx].plot(df.loc[~df['Death rate'].isnull(), 'Hospitalization rate'],
+                              df.loc[~df['Death rate'].isnull(), 'Smoothed predicted death rate'],
+                              **smoothed_pred_lines)
+        ax[0, indep_idx].set_xlabel('Cumulative hospitalization rate', fontsize=10)
+        ax[0, indep_idx].set_ylabel('Cumulative death rate', fontsize=10)
 
     for i, smooth_variable in enumerate(unadj_vars):
         # cumulative

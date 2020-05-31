@@ -20,20 +20,23 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     hierarchy = data.load_most_detailed_locations(input_root)
     full_data = data.load_full_data(input_root)
 
-    case_data = data.get_shifted_case_data(full_data)
+    case_data = data.get_shifted_data(full_data, 'Confirmed', 'Confirmed case rate')
+    hosp_data = data.get_shifted_data(full_data, 'Hospitalizations', 'Hospitalization rate')
     death_data = data.get_death_data(full_data)
     pop_data = data.get_population_data(full_data)
 
     logger.debug(f"Dropping {holdout_days} days from the end of the data.")
     case_data = data.holdout_days(case_data, holdout_days)
+    hosp_data = data.holdout_days(hosp_data, holdout_days)
     death_data = data.holdout_days(death_data, holdout_days)
 
     logger.debug(f"Filtering data by location.")
     case_data, missing_cases = data.filter_data_by_location(case_data, hierarchy, 'cases')
+    hosp_data, missing_hosp = data.filter_data_by_location(hosp_data, hierarchy, 'hospitalizations')
     death_data, missing_deaths = data.filter_data_by_location(death_data, hierarchy, 'deaths')
     pop_data, missing_pop = data.filter_data_by_location(pop_data, hierarchy, 'population')
 
-    model_data = data.combine_data(case_data, death_data, pop_data, hierarchy)
+    model_data = data.combine_data(case_data, hosp_data, death_data, pop_data, hierarchy)
 
     # # add some poorly behaving locations to missing list
     # # Assam (4843); Meghalaya (4862)
@@ -42,7 +45,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     # not_missing = ~model_data['location_id'].isin(missing_locations)
     # model_data = model_data.loc[not_missing]
 
-    model_data, no_cases_locs = data.filter_to_threshold_cases_and_deaths(model_data)
+    model_data, no_cases_locs, no_hosp_locs = data.filter_to_epi_threshold(model_data)
 
     # fit model
     var_dict = {'dep_var': 'Death rate',
@@ -51,10 +54,32 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     logger.debug('Launching CFR model.')
     no_cases = model_data['location_id'].isin(no_cases_locs)
     no_cases_data = model_data.loc[no_cases]
-    model_data = cfr_model.cfr_model_parallel(model_data.loc[~no_cases], model_dir, **var_dict)
-    model_data = model_data.append(no_cases_data)
-
+    cfr_model_data = cfr_model.cfr_model_parallel(model_data.loc[~no_cases], model_dir, **var_dict)
+    cfr_model_data = cfr_model_data.append(no_cases_data)
+    cfr_model_data = cfr_model_data.rename(index=str, columns={'Predicted death rate':'Predicted death rate (CFR)'})
+    
+    logger.debug('Launching HFR model.')
+    var_dict = {'dep_var': 'Death rate',
+                'spline_var': 'Hospitalization rate',
+                'indep_vars': []}
+    no_hosp = model_data['location_id'].isin(no_hosp_locs)
+    no_hosp_data = model_data.loc[no_hosp]
+    hfr_model_data = cfr_model.cfr_model_parallel(model_data.loc[~no_hosp], model_dir, **var_dict)
+    hfr_model_data = hfr_model_data.append(no_hosp_data)
+    hfr_model_data = hfr_model_data.rename(index=str, columns={'Predicted death rate':'Predicted death rate (HFR)'})
+    
+    model_data = cfr_model_data.loc[:,['location_id', 'location_name', 'Date', 
+                                       'Confirmed case rate', 'Death rate', 
+                                       'Predicted death rate (CFR)', 'population']].merge(
+        hfr_model_data.loc[:,['location_id', 'location_name', 'Date', 
+                              'Hospitalization rate', 'Death rate', 
+                              'Predicted death rate (HFR)', 'population']],
+        how='outer'
+    )    
+    
     logger.debug('Synthesizing time series.')
+    var_dict = {'dep_var': 'Death rate',
+                'indep_vars': ['Confirmed case rate', 'Hospitalization rate']}
     draw_df = smoother.synthesize_time_series_parallel(model_data, plot_dir, **var_dict)
 
     logger.debug("Synthesizing plots.")

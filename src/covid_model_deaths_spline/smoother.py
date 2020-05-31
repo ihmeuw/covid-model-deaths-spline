@@ -184,7 +184,7 @@ def synthesize_time_series(location_id: int,
 
 
 def get_plot_idx(i: int, n_vars: int):
-    if len(unadj_vars) > 1:
+    if n_vars > 1:
         top_idx = 0, i
         bottom_idx = 1, i
     else:

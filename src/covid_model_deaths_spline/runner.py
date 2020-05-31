@@ -38,7 +38,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     pop_data, missing_pop = data.filter_data_by_location(pop_data, hierarchy, 'population')
 
     model_data = data.combine_data(case_data, death_data, pop_data, hierarchy)
-    model_data, no_cases_locs = data.filter_to_threshold_cases_and_deaths(model_data)
+    model_data, no_cases_locs = data.filter_to_threshold_cases_and_deaths(hierarchy, model_data)
 
     # fit model
     shared_settings = {'dep_var': 'Death rate',

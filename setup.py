@@ -25,6 +25,7 @@ if __name__ == "__main__":
         'seaborn',
         'tqdm',
         'pypdf2',
+        'pyyaml',
         'ipython',
         'jupyter',
         'jupyterlab'

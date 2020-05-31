@@ -2,13 +2,14 @@ import functools
 import multiprocessing
 from pathlib import Path
 from typing import Callable, List
+import sys
 
+from covid_shared import shell_tools
 import dill as pickle
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
 import tqdm
+import yaml
 
 from covid_model_deaths_spline.mr_spline import SplineFit
 
@@ -19,12 +20,13 @@ def cfr_death_threshold(data: pd.DataFrame) -> int:
 
 def cfr_model_parallel(data: pd.DataFrame,
                        model_dir: Path,
+                       model_type: str,
                        deaths_threshold: Callable[[pd.DataFrame], int] = cfr_death_threshold,
                        daily: bool = False,
                        log: bool = True,
                        **model_args) -> pd.DataFrame:
     _combiner = functools.partial(cfr_model,
-                                  data=data, model_dir=model_dir,
+                                  data=data, model_dir=model_dir, model_type=model_type,
                                   deaths_threshold=deaths_threshold,
                                   daily=daily, log=log, **model_args)
     location_ids = data['location_id'].unique().tolist()
@@ -35,15 +37,15 @@ def cfr_model_parallel(data: pd.DataFrame,
 
 def cfr_model(location_id: int,
               data: pd.DataFrame,
-              deaths_threshold: Callable[[pd.DataFrame], int],
               daily: bool,
               log: bool,
               dep_var: str, spline_var: str, indep_vars: List[str],
-              model_dir: str) -> pd.DataFrame:
+              model_dir: str, 
+              model_type: str, **_) -> pd.DataFrame:
     # set up model
     np.random.seed(location_id)
     df = data[data.location_id == location_id]
-    deaths_threshold = deaths_threshold(df)
+    deaths_threshold = cfr_death_threshold(df)
 
     # add intercept
     df['intercept'] = 1
@@ -102,13 +104,34 @@ def cfr_model(location_id: int,
     )
     mr_mod.fit_model()
     df['Predicted model death rate'] = mr_mod.predict(df)
-    df['Predicted death rate'] = df['Predicted model death rate']
+    df[f'Predicted death rate ({model_type})'] = df['Predicted model death rate']
     if log:
-        df['Predicted death rate'] = np.exp(df['Predicted death rate'])
+        df[f'Predicted death rate ({model_type})'] = np.exp(df[f'Predicted death rate ({model_type})'])
     if daily:
-        df['Predicted death rate'] = df['Predicted death rate'].cumsum()
+        df[f'Predicted death rate ({model_type})'] = df[f'Predicted death rate ({model_type})'].cumsum()
 
-    with open(f"{model_dir}/{df['location_id'][0]}.pkl", 'wb') as fwrite:
+    with open(f"{model_dir}/{df['location_id'][0]}_{model_type}.pkl", 'wb') as fwrite:
         pickle.dump(mr_mod, fwrite, -1)
 
     return df
+
+
+def cfr_model_cluster(location_id: int, data_path: str, settings_path: str):
+    with Path(data_path).open('rb') as in_file:
+        in_data = pickle.load(in_file)
+
+    with Path(settings_path).open() as settings_file:
+        cfr_settings = yaml.full_load(settings_file)
+
+    output_dir = Path(cfr_settings['results_dir'])
+    result = cfr_model(location_id, in_data, **cfr_settings)
+    with (output_dir / f'{location_id}.pkl').open('wb') as outfile:
+        pickle.dump(result, outfile, -1)
+
+
+if __name__ == '__main__':
+    loc_id = int(sys.argv[1])
+    data = sys.argv[2]
+    settings = sys.argv[3]
+
+    cfr_model_cluster(loc_id, data, settings)

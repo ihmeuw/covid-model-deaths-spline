@@ -88,7 +88,7 @@ def enforce_monotonicity(df: pd.DataFrame, rate_var: str) -> pd.DataFrame:
     fill_idx = np.array([~(vals[i] >= vals[:i]).all() for i in range(vals.size)])
     df.loc[fill_idx, rate_var] = np.nan
     df[rate_var] = df[rate_var].interpolate()
-    
+
     return df.loc[~df[rate_var].isnull()]
 
 
@@ -140,7 +140,7 @@ def check_counts(model_data: pd.DataFrame, rate_var: str, action: str, threshold
     else:
         raise ValueError('Invalid action specified.')
     del df['Count']
-    
+
     return df
 
 
@@ -155,18 +155,21 @@ def filter_to_epi_threshold(model_data: pd.DataFrame, threshold: int = 3) -> Tup
     days_w_hosp = df['Hospitalization rate'].notnull().groupby(df['location_id']).sum()
     no_hosp_locs = days_w_hosp[days_w_hosp == 0].index.to_list()
 
-    df = check_counts(df, 'Death rate', 'drop', threshold)    
+    df = check_counts(df, 'Death rate', 'drop', threshold)
     
     dropped_locations = set(model_data['location_id']).difference(df['location_id'])
     if dropped_locations:
-        logger.warning(f"Dropped {list(dropped_locations)} from data due to lack of cases or deaths.")
-    
+        logger.warning(f"Dropped {sorted(list(dropped_locations))} from data due to lack of cases or deaths.")
+
     return df, no_cases_locs, no_hosp_locs
 
 
-def fill_dates(df: pd.DataFrame) -> pd.DataFrame:
+def fill_dates(df: pd.DataFrame, interp_var: str = None) -> pd.DataFrame:
     """Forward fill data by date."""
     df = df.sort_values('Date').set_index('Date')
-    df = df.asfreq('D', method='pad').reset_index()
-
+    df = df.asfreq('D').reset_index()
+    if interp_var:
+        df[interp_var] = df[interp_var].interpolate()
+    df = df.fillna(method='pad')
+    
     return df

@@ -12,7 +12,7 @@ from loguru import logger
 PROJECT = 'proj_dq'
 QUEUE = 'd.q'
 F_MEM = '5.0G'
-F_THREAD = '3'
+F_THREAD = '20'
 H_RUNTIME = '00:30:00'
 SLEEP_TIME = 10
 

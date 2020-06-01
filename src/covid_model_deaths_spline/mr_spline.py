@@ -13,6 +13,7 @@ class SplineFit:
                  spline_var: str,
                  indep_vars: List[str], 
                  n_i_knots: int,
+                 ensemble_knots: np.array = None,
                  spline_options: Dict = dict(),
                  scale_se: bool = True,
                  scale_se_power: float = 0.2,
@@ -65,7 +66,8 @@ class SplineFit:
         # get random knot placement
         if 'spline_knots' in list(spline_options.keys()):
             raise ValueError('Using random spline, do not manually specify knots.')
-        ensemble_knots = self.get_ensemble_knots(n_i_knots, data[spline_var].values)
+        if ensemble_knots is None:
+            ensemble_knots = self.get_ensemble_knots(n_i_knots, data[spline_var].values)
         
         # spline cov model
         spline_model = LinearCovModel(
@@ -82,7 +84,6 @@ class SplineFit:
         self.spline_var = spline_var
         
         # model
-        self.mr_data = mr_data
         self.mr_model = MRBeRT(mr_data, 
                                ensemble_cov_model=spline_model, 
                                ensemble_knots=ensemble_knots,
@@ -154,7 +155,7 @@ class SplineFit:
     def predict_submodel(self, sub_model, coef_dict: dict, pred_data: pd.DataFrame):
         spline_model_idx = sub_model.linear_cov_model_names.index(self.spline_var)
         spline_model = sub_model.linear_cov_models[spline_model_idx]
-        spline_model = spline_model.create_spline(self.mr_data)
+        spline_model = spline_model.create_spline(self.mr_model.data)
         preds = []
         for variable, coef in coef_dict.items():
             if variable == self.spline_var:

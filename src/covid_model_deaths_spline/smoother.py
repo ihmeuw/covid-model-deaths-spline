@@ -2,7 +2,7 @@ import functools
 from itertools import compress
 import multiprocessing
 from pathlib import Path
-from typing import List
+from typing import List, Dict
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -17,6 +17,25 @@ def apply_floor(vals: np.array, floor_val: float) -> np.array:
     vals[vals < floor_val] = floor_val
 
     return vals
+
+
+def run_smoothing_model(mod_df: pd.DataFrame, spline_options: Dict, 
+                        pred_df: pd.DataFrame) -> np.array:
+        mr_mod = SplineFit(
+            data=mod_df,
+            dep_var='y',
+            spline_var='x',
+            indep_vars=['intercept'],
+            n_i_knots=5,
+            spline_options=spline_options,
+            scale_se=True,
+            observed_var='observed',
+            pseudo_se_multiplier=1.33
+        )
+        mr_mod.fit_model()
+        smooth_y = mr_mod.predict(pd.DataFrame({'intercept':1, 'x': x}))
+        
+        return smooth_y
 
 
 def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
@@ -61,19 +80,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
             }
         if not daily:
             spline_options.update({'prior_spline_monotonicity':'increasing'})
-        mr_mod = SplineFit(
-            data=mod_df,
-            dep_var='y',
-            spline_var='x',
-            indep_vars=['intercept'],
-            n_i_knots=5,
-            spline_options=spline_options,
-            scale_se=True,
-            observed_var='observed',
-            pseudo_se_multiplier=1.33
-        )
-        mr_mod.fit_model()
-        smooth_y = mr_mod.predict(pd.DataFrame({'intercept':1, 'x': x}))
+
     else:
         # don't smooth if no difference
         smooth_y = y

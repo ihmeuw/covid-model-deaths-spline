@@ -18,23 +18,6 @@ def cfr_death_threshold(data: pd.DataFrame) -> int:
     return max(1, int((data['Death rate'] * data['population']).max() * 0.01))
 
 
-def cfr_model_parallel(data: pd.DataFrame,
-                       model_dir: Path,
-                       model_type: str,
-                       deaths_threshold: Callable[[pd.DataFrame], int] = cfr_death_threshold,
-                       daily: bool = False,
-                       log: bool = True,
-                       **model_args) -> pd.DataFrame:
-    _combiner = functools.partial(cfr_model,
-                                  data=data, model_dir=model_dir, model_type=model_type,
-                                  deaths_threshold=deaths_threshold,
-                                  daily=daily, log=log, **model_args)
-    location_ids = data['location_id'].unique().tolist()
-    with multiprocessing.Pool(20) as p:
-        model_data_dfs = list(tqdm.tqdm(p.imap(_combiner, location_ids), total=len(location_ids)))
-    return pd.concat(model_data_dfs).reset_index(drop=True)
-
-
 def cfr_model(location_id: int,
               data: pd.DataFrame,
               daily: bool,
@@ -114,24 +97,3 @@ def cfr_model(location_id: int,
         pickle.dump(mr_mod, fwrite, -1)
 
     return df
-
-
-def cfr_model_cluster(location_id: int, data_path: str, settings_path: str):
-    with Path(data_path).open('rb') as in_file:
-        in_data = pickle.load(in_file)
-
-    with Path(settings_path).open() as settings_file:
-        cfr_settings = yaml.full_load(settings_file)
-
-    output_dir = Path(cfr_settings['results_dir'])
-    result = cfr_model(location_id, in_data, **cfr_settings)
-    with (output_dir / f'{location_id}.pkl').open('wb') as outfile:
-        pickle.dump(result, outfile, -1)
-
-
-if __name__ == '__main__':
-    loc_id = int(sys.argv[1])
-    data = sys.argv[2]
-    settings = sys.argv[3]
-
-    cfr_model_cluster(loc_id, data, settings)

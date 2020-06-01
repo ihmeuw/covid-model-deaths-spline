@@ -20,12 +20,13 @@ def cfr_death_threshold(data: pd.DataFrame) -> int:
 
 def cfr_model_parallel(data: pd.DataFrame,
                        model_dir: Path,
+                       model_type: str,
                        deaths_threshold: Callable[[pd.DataFrame], int] = cfr_death_threshold,
                        daily: bool = False,
                        log: bool = True,
                        **model_args) -> pd.DataFrame:
     _combiner = functools.partial(cfr_model,
-                                  data=data, model_dir=model_dir,
+                                  data=data, model_dir=model_dir, model_type=model_type,
                                   deaths_threshold=deaths_threshold,
                                   daily=daily, log=log, **model_args)
     location_ids = data['location_id'].unique().tolist()
@@ -39,7 +40,8 @@ def cfr_model(location_id: int,
               daily: bool,
               log: bool,
               dep_var: str, spline_var: str, indep_vars: List[str],
-              model_dir: str, **_) -> pd.DataFrame:
+              model_dir: str, 
+              model_type: str, **_) -> pd.DataFrame:
     # set up model
     np.random.seed(location_id)
     df = data[data.location_id == location_id]
@@ -102,13 +104,13 @@ def cfr_model(location_id: int,
     )
     mr_mod.fit_model()
     df['Predicted model death rate'] = mr_mod.predict(df)
-    df['Predicted death rate'] = df['Predicted model death rate']
+    df[f'Predicted death rate ({model_type})'] = df['Predicted model death rate']
     if log:
-        df['Predicted death rate'] = np.exp(df['Predicted death rate'])
+        df[f'Predicted death rate ({model_type})'] = np.exp(df[f'Predicted death rate ({model_type})'])
     if daily:
-        df['Predicted death rate'] = df['Predicted death rate'].cumsum()
+        df[f'Predicted death rate ({model_type})'] = df[f'Predicted death rate ({model_type})'].cumsum()
 
-    with open(f"{model_dir}/{df['location_id'][0]}.pkl", 'wb') as fwrite:
+    with open(f"{model_dir}/{df['location_id'][0]}_{model_type}.pkl", 'wb') as fwrite:
         pickle.dump(mr_mod, fwrite, -1)
 
     return df

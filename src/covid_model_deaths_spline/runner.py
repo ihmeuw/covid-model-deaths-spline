@@ -24,21 +24,23 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     hierarchy = data.load_most_detailed_locations(input_root)
     full_data = data.load_full_data(input_root)
 
-    case_data = data.get_shifted_case_data(full_data)
+    case_data = data.get_shifted_data(full_data, 'Confirmed', 'Confirmed case rate')
+    hosp_data = data.get_shifted_data(full_data, 'Hospitalizations', 'Hospitalization rate')
     death_data = data.get_death_data(full_data)
     pop_data = data.get_population_data(full_data)
 
     logger.debug(f"Dropping {holdout_days} days from the end of the data.")
     case_data = data.holdout_days(case_data, holdout_days)
+    hosp_data = data.holdout_days(hosp_data, holdout_days)
     death_data = data.holdout_days(death_data, holdout_days)
 
     logger.debug(f"Filtering data by location.")
     case_data, missing_cases = data.filter_data_by_location(case_data, hierarchy, 'cases')
+    hosp_data, missing_hosp = data.filter_data_by_location(hosp_data, hierarchy, 'hospitalizations')
     death_data, missing_deaths = data.filter_data_by_location(death_data, hierarchy, 'deaths')
     pop_data, missing_pop = data.filter_data_by_location(pop_data, hierarchy, 'population')
-
-    model_data = data.combine_data(case_data, death_data, pop_data, hierarchy)
-    model_data, no_cases_locs = data.filter_to_threshold_cases_and_deaths(hierarchy, model_data)
+    model_data = data.combine_data(case_data, hosp_data, death_data, pop_data, hierarchy)
+    model_data, no_cases_locs, no_hosp_locs = data.filter_to_epi_threshold(hierarchy, model_data)
 
     # fit model
     shared_settings = {'dep_var': 'Death rate',
@@ -48,12 +50,12 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     logger.debug('Launching CFR model.')
     cfr_settings = {'model_dir': str(model_dir),
                     'daily': False,
-                    'log': True}
+                    'log': True,
+                    'model_type': 'CFR'}
     cfr_settings.update(shared_settings)
 
     no_cases = model_data['location_id'].isin(no_cases_locs)
     no_cases_data = model_data.loc[no_cases]
-
     if do_qsub:
         logger.debug('Submitting CFR jobs with qsubs')
         job_type = 'cfr_model'
@@ -83,14 +85,35 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
         for result_path in results_path.iterdir():
             with result_path.open('rb') as result_file:
                 results.append(pickle.load(result_file))
-        model_data = pd.concat(results)
+        cfr_model_data = pd.concat(results)
     else:
-        model_data = cfr_model.cfr_model_parallel(model_data.loc[~no_cases], model_dir, **shared_settings)
+        logger.debug('Running CFR models via multiprocessing.')
+        cfr_model_data = cfr_model.cfr_model_parallel(model_data.loc[~no_cases], model_dir, 'CFR', **shared_settings)
+    cfr_model_data = cfr_model_data.append(no_cases_data)
 
-    model_data = model_data.append(no_cases_data)
-
+    logger.debug('Running HFR models (multiprocessing).')
+    var_dict = {'dep_var': 'Death rate',
+                'spline_var': 'Hospitalization rate',
+                'indep_vars': []}
+    no_hosp = model_data['location_id'].isin(no_hosp_locs)
+    no_hosp_data = model_data.loc[no_hosp]
+    hfr_model_data = cfr_model.cfr_model_parallel(model_data.loc[~no_hosp], model_dir, 'HFR', **var_dict)
+    hfr_model_data = hfr_model_data.append(no_hosp_data)
+    
+    # combine CFR and HFR data
+    model_data = cfr_model_data.loc[:,['location_id', 'location_name', 'Date', 
+                                       'Confirmed case rate', 'Death rate', 
+                                       'Predicted death rate (CFR)', 'population']].merge(
+        hfr_model_data.loc[:,['location_id', 'location_name', 'Date', 
+                              'Hospitalization rate', 'Death rate', 
+                              'Predicted death rate (HFR)', 'population']],
+        how='outer'
+    )    
+    
     logger.debug('Synthesizing time series.')
-    draw_df = smoother.synthesize_time_series_parallel(model_data, plot_dir, **shared_settings)
+    var_dict = {'dep_var': 'Death rate',
+                'indep_vars': ['Confirmed case rate', 'Hospitalization rate']}
+    draw_df = smoother.synthesize_time_series_parallel(model_data, plot_dir, **var_dict)
 
     logger.debug("Synthesizing plots.")
     pdf_merger.pdf_merger(indir=plot_dir, outfile=str(output_root / 'model_results.pdf'))

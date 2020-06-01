@@ -14,7 +14,7 @@ fi
 dt=$(date '+%Y-%m-%d_%H-%M-%S') &&
 echo "Creating environment covid-deaths-spline-$dt" &&
 umask 002
-conda create -y --name=covid-deaths-spline-"$dt" -c conda-forge cyipopt gmp python=3.6 &&
+conda create -y --name=covid-deaths-spline-"$dt" -c conda-forge python=3.6 cyipopt gmp &&
 conda activate covid-deaths-spline-"$dt" &&
 pip install --global-option=build_ext --global-option '-I'$CONDA_PREFIX'/include/' pycddlib &&
 pip install drmaa &&

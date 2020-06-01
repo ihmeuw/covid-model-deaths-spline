@@ -82,7 +82,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     with settings_path.open('w') as settings_file:
         yaml.dump(model_settings, settings_file)
     job_args_map = {
-        location_id: [models.__file__, location_id, data_path, settings_path, 10]
+        location_id: [models.__file__, location_id, data_path, settings_path, cluster.OMP_NUM_THREADS]
         for location_id in model_data['location_id'].unique()
     }
     cluster.run_cluster_jobs('models', output_root, job_args_map)

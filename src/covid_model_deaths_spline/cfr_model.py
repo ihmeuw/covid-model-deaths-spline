@@ -1,5 +1,3 @@
-import functools
-import multiprocessing
 from pathlib import Path
 from typing import Callable, List
 import sys
@@ -76,7 +74,7 @@ def cfr_model(location_id: int,
     }
     if not daily:
         spline_options.update({'prior_spline_monotonicity':'increasing'})
-    mr_mod = SplineFit(
+    mr_model = SplineFit(
         data=mod_df,
         dep_var=adj_vars[dep_var],
         spline_var=adj_vars[spline_var],
@@ -85,8 +83,8 @@ def cfr_model(location_id: int,
         spline_options=spline_options,
         scale_se=False
     )
-    mr_mod.fit_model()
-    df['Predicted model death rate'] = mr_mod.predict(df)
+    mr_model.fit_model()
+    df['Predicted model death rate'] = mr_model.predict(df)
     df[f'Predicted death rate ({model_type})'] = df['Predicted model death rate']
     if log:
         df[f'Predicted death rate ({model_type})'] = np.exp(df[f'Predicted death rate ({model_type})'])
@@ -94,6 +92,6 @@ def cfr_model(location_id: int,
         df[f'Predicted death rate ({model_type})'] = df[f'Predicted death rate ({model_type})'].cumsum()
 
     with open(f"{model_dir}/{df['location_id'][0]}_{model_type}.pkl", 'wb') as fwrite:
-        pickle.dump(mr_mod, fwrite, -1)
+        pickle.dump(mr_model, fwrite, -1)
 
     return df

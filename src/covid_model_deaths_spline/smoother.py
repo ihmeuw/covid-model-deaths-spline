@@ -42,16 +42,19 @@ def run_smoothing_model(mod_df: pd.DataFrame, spline_options: Dict,
             return smooth_y
     
     
-def draw_cleanup(draws: np.array, smooth_y: np.array, x: np.array,
+def draw_cleanup(draws: np.array, log: bool, daily: bool, smooth_y: np.array, x: np.array,
                  df: pd.DataFrame) -> pd.DataFrame:
     # set to linear, add up cumulative, and create dataframe
-    draws = np.exp(draws)
-    if smooth_y is not None:
+    if log:
+        draws = np.exp(draws)
         draws *= np.exp(smooth_y) / draws.mean(axis=1, keepdims=True)
-    draws = draws.cumsum(axis=0)
+    if daily:
+        draws = draws.cumsum(axis=0)
 
     # store in dataframe
-    draw_df = df.loc[x, ['location_id', 'Date', 'Smooth log', 'Smooth daily', 'population']].reset_index(drop=True)
+    draw_df = df.loc[x, ['location_id', 'Date', 'population']].reset_index(drop=True)
+    draw_df['Smooth log'] = log
+    draw_df['Smooth daily'] = daily
     draw_df = pd.concat([draw_df, 
                          pd.DataFrame(draws, columns=[f'draw_{d}' for d in range(draws.shape[1])])], axis=1)
     
@@ -122,7 +125,12 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     noisy_draws = np.random.normal(smooth_y, rstd, (smooth_y.size, n_draws))
     #draws = stats.t.rvs(dof, loc=smooth_y, scale=std, size=(smooth_y.size, n_draws))
     
-    # refit
+    # refit - currently in ln(daily), transform to correct fit space
+    noisy_draws = np.exp(noisy_draws)
+    if not daily:
+        noisy_draws = np.cumsum(noisy_draws, axis=1)
+    if log:
+        noisy_draws = np.log(noisy_draws)
     draw_mod_dfs = [
         pd.DataFrame({
             'y':nd,
@@ -142,11 +150,9 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
         smooth_draws = list(tqdm.tqdm(p.imap(_combiner, draw_mod_dfs), total=n_draws))
     smooth_draws = np.vstack(smooth_draws).T
     
-    # make pretty
-    df['Smooth log'] = log
-    df['Smooth daily'] = daily
-    noisy_draws = draw_cleanup(noisy_draws, smooth_y, x, df)
-    smooth_draws = draw_cleanup(smooth_draws, smooth_y, x, df)
+    # make pretty (in linear cumulative space)
+    noisy_draws = draw_cleanup(noisy_draws, log, daily, smooth_y, x, df)
+    smooth_draws = draw_cleanup(smooth_draws, log, daily, smooth_y, x, df)
 
     return noisy_draws, smooth_draws
 

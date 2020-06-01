@@ -1,17 +1,15 @@
 import functools
-import multiprocessing
 from pathlib import Path
 from typing import Callable, List
 import sys
 
-from covid_shared import shell_tools
 import dill as pickle
 import numpy as np
 import pandas as pd
-import tqdm
 import yaml
 
 from covid_model_deaths_spline.mr_spline import SplineFit
+from covid_model_deaths_spline.utilities import run_multiprocess
 
 
 def cfr_death_threshold(data: pd.DataFrame) -> int:
@@ -30,8 +28,9 @@ def cfr_model_parallel(data: pd.DataFrame,
                                   deaths_threshold=deaths_threshold,
                                   daily=daily, log=log, **model_args)
     location_ids = data['location_id'].unique().tolist()
-    with multiprocessing.Pool(20) as p:
-        model_data_dfs = list(tqdm.tqdm(p.imap(_combiner, location_ids), total=len(location_ids)))
+
+    model_data_dfs = run_multiprocess(_combiner, location_ids)
+
     return pd.concat(model_data_dfs).reset_index(drop=True)
 
 
@@ -40,7 +39,7 @@ def cfr_model(location_id: int,
               daily: bool,
               log: bool,
               dep_var: str, spline_var: str, indep_vars: List[str],
-              model_dir: str, 
+              model_dir: str,
               model_type: str, **_) -> pd.DataFrame:
     # set up model
     np.random.seed(location_id)
@@ -63,7 +62,7 @@ def cfr_model(location_id: int,
         if log:
             df.loc[df[mod_var] < floor, mod_var] = floor
             df[mod_var] = np.log(df[mod_var])
-        adj_vars.update({orig_var:mod_var})
+        adj_vars.update({orig_var: mod_var})
     df['Model log'] = log
     df['Model daily'] = daily
 
@@ -85,11 +84,11 @@ def cfr_model(location_id: int,
         n_i_knots = 5
     else:
         n_i_knots = 3
-    spline_options={
+    spline_options = {
         'spline_knots_type': 'frequency',
         'spline_degree': 3,
-        'spline_r_linear':True,
-        'spline_l_linear':True,
+        'spline_r_linear': True,
+        'spline_l_linear': True,
     }
     if not daily:
         spline_options.update({'prior_spline_monotonicity':'increasing'})

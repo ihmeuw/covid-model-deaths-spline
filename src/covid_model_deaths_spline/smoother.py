@@ -1,6 +1,5 @@
 import functools
 from itertools import compress
-import multiprocessing
 from pathlib import Path
 from typing import List
 
@@ -8,9 +7,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-import tqdm
 
 from covid_model_deaths_spline.mr_spline import SplineFit
+from covid_model_deaths_spline.utilities import run_multiprocess
 
 
 def apply_floor(vals: np.array, floor_val: float) -> np.array:
@@ -117,8 +116,9 @@ def synthesize_time_series_parallel(data: pd.DataFrame,
                                   data=data, plot_dir=plot_dir,
                                   **model_args)
     location_ids = data['location_id'].unique().tolist()
-    with multiprocessing.Pool(20) as p:
-        draw_data_dfs = list(tqdm.tqdm(p.imap(_combiner, location_ids), total=len(location_ids)))
+
+    draw_data_dfs = run_multiprocess(_combiner, location_ids)
+
     return pd.concat(draw_data_dfs).reset_index(drop=True)
 
 
@@ -136,11 +136,11 @@ def synthesize_time_series(location_id: int,
     else:
         daily = True
     draw_df = smoother(
-        df=df.copy(), 
-        obs_var=dep_var, 
-        pred_vars=[f'Predicted {dep_var.lower()} (CFR)', f'Predicted {dep_var.lower()} (HFR)'], 
-        n_draws=n_draws, 
-        daily=daily, 
+        df=df.copy(),
+        obs_var=dep_var,
+        pred_vars=[f'Predicted {dep_var.lower()} (CFR)', f'Predicted {dep_var.lower()} (HFR)'],
+        n_draws=n_draws,
+        daily=daily,
         log=log
     )
     draw_cols = [col for col in draw_df.columns if col.startswith('draw_')]
@@ -217,7 +217,7 @@ def plotter(df: pd.DataFrame, unadj_vars: List[str], plot_file: str):
                               **cfr_lines)
         ax[0, indep_idx].plot(df.loc[~df['Death rate'].isnull(), 'Confirmed case rate'],
                               df.loc[~df['Death rate'].isnull(), 'Smoothed predicted death rate'],
-                              **smoothed_pred_lines)    
+                              **smoothed_pred_lines)
         ax[0, indep_idx].set_xlabel('Cumulative case rate', fontsize=10)
         ax[0, indep_idx].set_ylabel('Cumulative death rate', fontsize=10)
         indep_idx += 1
@@ -236,10 +236,9 @@ def plotter(df: pd.DataFrame, unadj_vars: List[str], plot_file: str):
         ax[0, indep_idx].set_xlabel('Cumulative hospitalization rate', fontsize=10)
         ax[0, indep_idx].set_ylabel('Cumulative death rate', fontsize=10)
 
-        
     for i, smooth_variable in enumerate(unadj_vars):
         top_idx, bottom_idx = get_plot_idx(i, len(unadj_vars))
-        
+
         # cumulative
         raw_variable = smooth_variable.replace('Smoothed ', '').capitalize()
         plot_label = raw_variable.lower().replace(' rate', 's')

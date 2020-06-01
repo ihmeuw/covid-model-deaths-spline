@@ -12,7 +12,7 @@ from loguru import logger
 PROJECT = 'proj_dq'
 QUEUE = 'd.q'
 F_MEM = '5.0G'
-F_THREAD = '3'
+F_THREAD = '4'
 H_RUNTIME = '00:30:00'
 SLEEP_TIME = 10
 
@@ -89,6 +89,7 @@ def decode_status(job_status):
                    drmaa.JobState.FAILED: 'failed'}
 
     return decoder_map[job_status]
+
 
 def get_drmaa():
     try:

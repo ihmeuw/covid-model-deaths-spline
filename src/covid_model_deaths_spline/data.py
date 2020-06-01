@@ -144,7 +144,9 @@ def check_counts(model_data: pd.DataFrame, rate_var: str, action: str, threshold
     return df
 
 
-def filter_to_epi_threshold(model_data: pd.DataFrame, threshold: int = 3) -> Tuple[pd.DataFrame, List[int]]:
+def filter_to_epi_threshold(hierarchy: pd.DataFrame, 
+                            model_data: pd.DataFrame, 
+                            threshold: int = 3) -> Tuple[pd.DataFrame, List[int]]:
     """Drop locations that don't have at least `n` deaths; do not use cases or hospitalizations if under `n`."""
     df = model_data.copy()
     df = check_counts(df, 'Confirmed case rate', 'fill_na', threshold)
@@ -156,8 +158,8 @@ def filter_to_epi_threshold(model_data: pd.DataFrame, threshold: int = 3) -> Tup
     no_hosp_locs = days_w_hosp[days_w_hosp == 0].index.to_list()
 
     df = check_counts(df, 'Death rate', 'drop', threshold)
-    
-    dropped_locations = set(model_data['location_id']).difference(df['location_id'])
+    dropped_locations = set(hierarchy['location_id']).difference(df['location_id'])
+
     if dropped_locations:
         logger.warning(f"Dropped {sorted(list(dropped_locations))} from data due to lack of cases or deaths.")
 

@@ -63,7 +63,8 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     model_settings.update({'HFR':hfr_settings})
     smoother_settings = {'obs_var': 'Death rate',
                          'pred_vars': ['Predicted death rate (CFR)', 'Predicted death rate (HFR)'],
-                         'spline_vars': ['Confirmed case rate', 'Hospitalization rate']}
+                         'spline_vars': ['Confirmed case rate', 'Hospitalization rate'],
+                         'plot_dir':plot_dir}
     model_settings.update({'smoother':smoother_settings})
     model_settings['no_cases_locs'] = no_cases_locs
     model_settings['no_hosp_locs'] = no_hosp_locs

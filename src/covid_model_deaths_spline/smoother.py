@@ -224,7 +224,7 @@ def synthesize_time_series(location_id: int,
                 [obs_var] + list(compress(spline_vars, (~df[spline_vars].isnull().all(axis=0)).to_list())),
                 f"{plot_dir}/{df['location_id'][0]}.pdf")
 
-    return draw_df
+    return noisy_draws, smooth_draws
 
 
 def get_plot_idx(i: int, n_vars: int):

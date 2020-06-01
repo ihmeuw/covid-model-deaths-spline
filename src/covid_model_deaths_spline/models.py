@@ -59,7 +59,7 @@ if __name__ == '__main__':
     location_id = int(sys.argv[1])
     data_path = sys.argv[2]
     settings_path = sys.argv[3]
-    omp_num_threads = int(sys.argv[4])
+    omp_num_threads = sys.argv[4]
     
     os.environ['OMP_NUM_THREADS'] = omp_num_threads
 

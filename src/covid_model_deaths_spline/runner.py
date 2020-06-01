@@ -56,15 +56,15 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     cfr_settings = {'spline_var': 'Confirmed case rate',
                     'model_type': 'CFR'}
     cfr_settings.update(s1_settings)
-    model_settings.update({'CFR':cfr_settings})
+    model_settings.update({'CFR': cfr_settings})
     hfr_settings = {'spline_var': 'Hospitalization rate',
                     'model_type': 'HFR'}
     hfr_settings.update(s1_settings)
-    model_settings.update({'HFR':hfr_settings})
+    model_settings.update({'HFR': hfr_settings})
     smoother_settings = {'obs_var': 'Death rate',
                          'pred_vars': ['Predicted death rate (CFR)', 'Predicted death rate (HFR)'],
                          'spline_vars': ['Confirmed case rate', 'Hospitalization rate'],
-                         'plot_dir':plot_dir}
+                         'plot_dir': str(plot_dir)}
     model_settings.update({'smoother':smoother_settings})
     model_settings['no_cases_locs'] = no_cases_locs
     model_settings['no_hosp_locs'] = no_hosp_locs
@@ -86,7 +86,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
         location_id: [models.__file__, location_id, data_path, settings_path, cluster.OMP_NUM_THREADS]
         for location_id in model_data['location_id'].unique()
     }
-    cluster.run_cluster_jobs('models', output_root, job_args_map)
+    cluster.run_cluster_jobs('covid_death_models', output_root, job_args_map)
     
     #
     logger.debug('Compiling results.')

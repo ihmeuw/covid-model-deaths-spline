@@ -1,4 +1,5 @@
 import functools
+from itertools import compress
 import multiprocessing
 from pathlib import Path
 from typing import List
@@ -18,14 +19,14 @@ def apply_floor(vals: np.array, floor_val: float) -> np.array:
     return vals
 
 
-def smoother(df: pd.DataFrame, obs_var: str, pred_var: str,
+def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
              n_draws: int, daily: bool, log: bool) -> pd.DataFrame:
     # extract inputs
     df = df.sort_values('Date').reset_index(drop=True)
     floor = 0.01 / df['population'][0]
-    keep_idx = ~df[[obs_var, pred_var]].isnull().all(axis=1)
-    no_na_idx = ~df[[obs_var, pred_var]].isnull().any(axis=1)
-    y = df.loc[keep_idx, [obs_var, pred_var]].values
+    keep_idx = ~df[[obs_var] + pred_vars].isnull().all(axis=1)
+    max_1week_of_zeros = (df[obs_var][::-1] == 0).cumsum()[::-1] <= 7
+    y = df.loc[keep_idx, [obs_var] + pred_vars].values
     if daily:
         y[1:] = np.diff(y, axis=0)
     if log:
@@ -35,12 +36,12 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_var: str,
 
     if y[~np.isnan(y)].ptp() > 1e-10:
         # get smoothed curve (dropping NAs, inflating variance for deaths from cases - ASSUMES THAT IS SECOND COLUMN)
-        obs_data = y.copy()
+        obs_data = y[max_1week_of_zeros].copy()
         obs_data[:,0] = 1
-        obs_data[:,1] = 0
-        y_fit = y.flatten()
+        obs_data[:,1:] = 0
+        y_fit = y[max_1week_of_zeros].flatten()
         obs_data = obs_data.flatten()
-        x_fit = np.repeat(x, y.shape[1], axis=0)
+        x_fit = np.repeat(x[max_1week_of_zeros], y.shape[1], axis=0)
         non_na_idx = ~np.isnan(y_fit)
         y_fit = y_fit[non_na_idx]
         obs_data = obs_data[non_na_idx]
@@ -65,7 +66,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_var: str,
             dep_var='y',
             spline_var='x',
             indep_vars=['intercept'],
-            n_i_knots=4,
+            n_i_knots=5,
             spline_options=spline_options,
             scale_se=True,
             observed_var='observed',
@@ -123,7 +124,7 @@ def synthesize_time_series_parallel(data: pd.DataFrame,
 
 def synthesize_time_series(location_id: int,
                            data: pd.DataFrame,
-                           dep_var: str, spline_var: str, indep_vars: List[str],
+                           dep_var: str, indep_vars: List[str],
                            n_draws: int = 1000, plot_dir: str = None) -> pd.DataFrame:
     # location data
     df = data[data.location_id == location_id]
@@ -134,7 +135,14 @@ def synthesize_time_series(location_id: int,
         daily = False
     else:
         daily = True
-    draw_df = smoother(df.copy().reset_index(drop=True), dep_var, f'Predicted {dep_var.lower()}', n_draws, daily, log)
+    draw_df = smoother(
+        df=df.copy(), 
+        obs_var=dep_var, 
+        pred_vars=[f'Predicted {dep_var.lower()} (CFR)', f'Predicted {dep_var.lower()} (HFR)'], 
+        n_draws=n_draws, 
+        daily=daily, 
+        log=log
+    )
     draw_cols = [col for col in draw_df.columns if col.startswith('draw_')]
 
     # add summary stats to dataset for plotting
@@ -159,6 +167,7 @@ def synthesize_time_series(location_id: int,
     summ_df.loc[first_day, 'Smoothed predicted daily death rate lower'] = summ_df['Smoothed predicted death rate lower']
     summ_df.loc[first_day, 'Smoothed predicted daily death rate upper'] = summ_df['Smoothed predicted death rate upper']
     df = df.merge(summ_df, how='left')
+    df = df.sort_values('Date')
 
     # format draw data for infectionator
     draw_df = draw_df.rename(index=str, columns={'Date':'date'})
@@ -168,10 +177,20 @@ def synthesize_time_series(location_id: int,
     # plot
     if plot_dir is not None:
         plotter(df,
-                [dep_var, spline_var] + indep_vars,
+                [dep_var] + list(compress(indep_vars, (~df[indep_vars].isnull().all(axis=0)).to_list())),
                 f"{plot_dir}/{df['location_id'][0]}.pdf")
 
     return draw_df
+
+
+def get_plot_idx(i: int, n_vars: int):
+    if n_vars > 1:
+        top_idx = 0, i
+        bottom_idx = 1, i
+    else:
+        top_idx = 0
+        bottom_idx = 1
+    return top_idx, bottom_idx
 
 
 def plotter(df: pd.DataFrame, unadj_vars: List[str], plot_file: str):
@@ -180,70 +199,98 @@ def plotter(df: pd.DataFrame, unadj_vars: List[str], plot_file: str):
     fig, ax = plt.subplots(2, len(unadj_vars), figsize=(len(unadj_vars)*11, 16))
 
     # aesthetic features
+    raw_points = {'c':'dodgerblue', 'edgecolors':'navy', 's':100, 'alpha':0.75}
     raw_lines = {'color':'navy', 'alpha':0.5, 'linewidth':3}
-    raw_points = {'c':'dodgerblue', 'edgecolors':'navy', 's':100, 'alpha':0.5}
-    pred_lines = {'color':'forestgreen', 'alpha':0.75, 'linewidth':3}
+    cfr_lines = {'color':'forestgreen', 'alpha':0.5, 'linewidth':3}
+    hfr_lines = {'color':'darkorchid', 'alpha':0.5, 'linewidth':3}
     smoothed_pred_lines = {'color':'firebrick', 'alpha':0.75, 'linewidth':3}
     smoothed_pred_area = {'color':'firebrick', 'alpha':0.25}
 
-    ax[0, 1].scatter(df['Confirmed case rate'],
-                     df['Death rate'],
-                     **raw_points)
-    ax[0, 1].plot(df.loc[~df['Death rate'].isnull(), 'Confirmed case rate'],
-                  df.loc[~df['Death rate'].isnull(), 'Predicted death rate'],
-                  **pred_lines)
-    ax[0, 1].plot(df.loc[~df['Death rate'].isnull(), 'Confirmed case rate'],
-                  df.loc[~df['Death rate'].isnull(), 'Smoothed predicted death rate'],
-                  **smoothed_pred_lines)
-    ax[0, 1].set_xlabel('Cumulative case rate', fontsize=10)
-    ax[0, 1].set_ylabel('Cumulative death rate', fontsize=10)
+    # cases
+    indep_idx = 1
+    if 'Confirmed case rate' in unadj_vars:
+        ax[0, indep_idx].scatter(df['Confirmed case rate'],
+                                 df['Death rate'],
+                                 **raw_points)
+        ax[0, indep_idx].plot(df.loc[~df['Death rate'].isnull(), 'Confirmed case rate'],
+                              df.loc[~df['Death rate'].isnull(), 'Predicted death rate (CFR)'],
+                              **cfr_lines)
+        ax[0, indep_idx].plot(df.loc[~df['Death rate'].isnull(), 'Confirmed case rate'],
+                              df.loc[~df['Death rate'].isnull(), 'Smoothed predicted death rate'],
+                              **smoothed_pred_lines)    
+        ax[0, indep_idx].set_xlabel('Cumulative case rate', fontsize=10)
+        ax[0, indep_idx].set_ylabel('Cumulative death rate', fontsize=10)
+        indep_idx += 1
 
+    # hospitalizations
+    if 'Hospitalization rate' in unadj_vars:
+        ax[0, indep_idx].scatter(df['Hospitalization rate'],
+                                 df['Death rate'],
+                                 **raw_points)
+        ax[0, indep_idx].plot(df.loc[~df['Death rate'].isnull(), 'Hospitalization rate'],
+                              df.loc[~df['Death rate'].isnull(), 'Predicted death rate (HFR)'],
+                              **hfr_lines)
+        ax[0, indep_idx].plot(df.loc[~df['Death rate'].isnull(), 'Hospitalization rate'],
+                              df.loc[~df['Death rate'].isnull(), 'Smoothed predicted death rate'],
+                              **smoothed_pred_lines)
+        ax[0, indep_idx].set_xlabel('Cumulative hospitalization rate', fontsize=10)
+        ax[0, indep_idx].set_ylabel('Cumulative death rate', fontsize=10)
+
+        
     for i, smooth_variable in enumerate(unadj_vars):
+        top_idx, bottom_idx = get_plot_idx(i, len(unadj_vars))
+        
         # cumulative
         raw_variable = smooth_variable.replace('Smoothed ', '').capitalize()
         plot_label = raw_variable.lower().replace(' rate', 's')
         if ~df[raw_variable].isnull().all():
             if 'death' in smooth_variable.lower():
-                ax[0, i].plot(df['Date'], df[raw_variable] * df['population'], **raw_lines)
-                ax[0, i].scatter(df['Date'], df[raw_variable] * df['population'], **raw_points)
-                ax[1, i].set_xlabel('Date', fontsize=10)
-                ax[0, i].set_ylabel(f'Cumulative {plot_label}', fontsize=10)
+                ax[top_idx].plot(df['Date'], df[raw_variable] * df['population'], **raw_lines)
+                ax[top_idx].scatter(df['Date'], df[raw_variable] * df['population'], **raw_points)
+                ax[bottom_idx].set_xlabel('Date', fontsize=10)
+                ax[top_idx].set_ylabel(f'Cumulative {plot_label}', fontsize=10)
 
             # daily
-            ax[1, i].plot(df['Date'][1:],
-                          np.diff(df[raw_variable]) * df['population'][1:],
-                          **raw_lines)
-            ax[1, i].scatter(df['Date'][1:],
-                             np.diff(df[raw_variable]) * df['population'][1:],
-                             **raw_points)
-            ax[1, i].axhline(0, color='black', alpha=0.25)
+            ax[bottom_idx].plot(df['Date'][1:],
+                                np.diff(df[raw_variable]) * df['population'][1:],
+                                **raw_lines)
+            ax[bottom_idx].scatter(df['Date'][1:],
+                                   np.diff(df[raw_variable]) * df['population'][1:],
+                                   **raw_points)
+            ax[bottom_idx].axhline(0, color='black', alpha=0.25)
             if 'death' in smooth_variable.lower():
-                ax[1, i].set_xlabel('Date', fontsize=10)
+                ax[bottom_idx].set_xlabel('Date', fontsize=10)
             else:
-                ax[1, i].set_xlabel('Date (+8 days)', fontsize=10)
-            ax[1, i].set_ylabel(f'Daily {plot_label}', fontsize=10)
+                ax[bottom_idx].set_xlabel('Date (+8 days)', fontsize=10)
+            ax[bottom_idx].set_ylabel(f'Daily {plot_label}', fontsize=10)
 
     # model prediction
-    ax[0, 0].plot(df['Date'], df['Predicted death rate'] * df['population'],
-                  **pred_lines)
-    ax[1, 0].plot(df['Date'][1:],
-                  np.diff(df['Predicted death rate']) * df['population'][1:],
-                  **pred_lines)
+    top_idx, bottom_idx = get_plot_idx(0, len(unadj_vars))
+    ax[top_idx].plot(df['Date'], df['Predicted death rate (CFR)'] * df['population'],
+                     **cfr_lines)
+    ax[top_idx].plot(df['Date'], df['Predicted death rate (HFR)'] * df['population'],
+                     **hfr_lines)
+    ax[bottom_idx].plot(df['Date'][1:],
+                        np.diff(df['Predicted death rate (CFR)']) * df['population'][1:],
+                        **cfr_lines)
+    ax[bottom_idx].plot(df['Date'][1:],
+                        np.diff(df['Predicted death rate (HFR)']) * df['population'][1:],
+                        **hfr_lines)
 
     # smoothed
-    ax[0, 0].plot(df['Date'],
-                  df['Smoothed predicted death rate'] * df['population'],
-                  **smoothed_pred_lines)
-    ax[0, 0].fill_between(
+    ax[top_idx].plot(df['Date'],
+                     df['Smoothed predicted death rate'] * df['population'],
+                     **smoothed_pred_lines)
+    ax[top_idx].fill_between(
         df['Date'],
         df['Smoothed predicted death rate lower'] * df['population'],
         df['Smoothed predicted death rate upper'] * df['population'],
         **smoothed_pred_area
     )
-    ax[1, 0].plot(df['Date'],
-                  df['Smoothed predicted daily death rate'] * df['population'],
-                  **smoothed_pred_lines)
-    ax[1, 0].fill_between(
+    ax[bottom_idx].plot(df['Date'],
+                        df['Smoothed predicted daily death rate'] * df['population'],
+                        **smoothed_pred_lines)
+    ax[bottom_idx].fill_between(
         df['Date'],
         df['Smoothed predicted daily death rate lower'] * df['population'],
         df['Smoothed predicted daily death rate upper'] * df['population'],

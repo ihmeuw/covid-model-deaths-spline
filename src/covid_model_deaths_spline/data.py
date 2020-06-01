@@ -25,29 +25,29 @@ def load_full_data(inputs_root: Path) -> pd.DataFrame:
     data['Date'] = pd.to_datetime(data['Date'])
     data['location_id'] = data['location_id'].astype(int)
 
-    keep_columns = ['location_id', 'Date', 'Deaths', 'Confirmed', 'Death rate', 'population']
+    keep_columns = ['location_id', 'Date', 'Deaths', 'Confirmed', 'Hospitalizations', 'Death rate', 'population']
     sort_columns = ['location_id', 'Date']
     data = data.loc[:, keep_columns].sort_values(sort_columns).reset_index(drop=True)
     return data
 
 
-def get_shifted_case_data(full_data: pd.DataFrame, shift_size: int = 8) -> pd.DataFrame:
+def get_shifted_data(full_data: pd.DataFrame, count_var: str, rate_var: str, shift_size: int = 8) -> pd.DataFrame:
     """Filter and clean case data and shift into the future."""
-    case_df = full_data.loc[:, ['location_id', 'Date', 'Confirmed', 'population']]
-    case_df['Confirmed case rate'] = case_df['Confirmed'] / case_df['population']
-    case_df['True date'] = case_df['Date']
-    case_df['Date'] = case_df['Date'].apply(lambda x: x + pd.Timedelta(days=shift_size))
+    data = full_data.loc[:, ['location_id', 'Date', count_var, 'population']]
+    data[rate_var] = data[count_var] / data['population']
+    data['True date'] = data['Date']
+    data['Date'] = data['Date'].apply(lambda x: x + pd.Timedelta(days=shift_size))
 
-    non_na = ~case_df['Confirmed case rate'].isnull()
-    has_cases = case_df.groupby('location_id')['Confirmed case rate'].transform(max).astype(bool)
-    keep_columns = ['location_id', 'True date', 'Date', 'Confirmed case rate']
-    case_df = case_df.loc[non_na & has_cases, keep_columns].reset_index(drop=True)
+    non_na = ~data[rate_var].isnull()
+    has_data = data.groupby('location_id')[rate_var].transform(max).astype(bool)
+    keep_columns = ['location_id', 'True date', 'Date', rate_var]
+    data = data.loc[non_na & has_data, keep_columns].reset_index(drop=True)
 
-    case_df = (case_df.groupby('location_id', as_index=False)
-               .apply(lambda x: fill_dates(x))
-               .reset_index(drop=True))
+    data = (data.groupby('location_id', as_index=False)
+            .apply(lambda x: fill_dates(x))
+            .reset_index(drop=True))
 
-    return case_df
+    return data
 
 
 def get_death_data(full_data: pd.DataFrame) -> pd.DataFrame:
@@ -109,11 +109,14 @@ def filter_data_by_location(data: pd.DataFrame, hierarchy: pd.DataFrame,
     return data, missing_list
 
 
-def combine_data(case_data: pd.DataFrame, death_data: pd.DataFrame,
+def combine_data(case_data: pd.DataFrame,
+                 hosp_data: pd.DataFrame,
+                 death_data: pd.DataFrame,
                  pop_data: pd.DataFrame, hierarchy: pd.DataFrame) -> pd.DataFrame:
     """Merge all data into a single model data set."""
     df = functools.reduce(lambda x, y: pd.merge(x, y, how='outer'),
                           [case_data.loc[:, ['location_id', 'Date', 'Confirmed case rate']],
+                           hosp_data.loc[:, ['location_id', 'Date', 'Hospitalization rate']],
                            death_data.loc[:, ['location_id', 'Date', 'Death rate']],
                            pop_data.loc[:, ['location_id', 'population']]])
     df = hierarchy[['location_id', 'location_name']].merge(df)
@@ -141,23 +144,32 @@ def check_counts(model_data: pd.DataFrame, rate_var: str, action: str, threshold
     return df
 
 
-def filter_to_threshold_cases_and_deaths(model_data: pd.DataFrame, threshold: int = 3) -> Tuple[pd.DataFrame, List[int]]:
-    """Drop locations that don't have at least `n` deaths; do not use cases if under `n`."""
+def filter_to_epi_threshold(model_data: pd.DataFrame, threshold: int = 3) -> Tuple[pd.DataFrame, List[int]]:
+    """Drop locations that don't have at least `n` deaths; do not use cases or hospitalizations if under `n`."""
     df = model_data.copy()
     df = check_counts(df, 'Confirmed case rate', 'fill_na', threshold)
     days_w_cases = df['Confirmed case rate'].notnull().groupby(df['location_id']).sum()
     no_cases_locs = days_w_cases[days_w_cases == 0].index.to_list()
+    
+    df = check_counts(df, 'Hospitalization rate', 'fill_na', threshold)
+    days_w_hosp = df['Hospitalization rate'].notnull().groupby(df['location_id']).sum()
+    no_hosp_locs = days_w_hosp[days_w_hosp == 0].index.to_list()
+
     df = check_counts(df, 'Death rate', 'drop', threshold)
+    
     dropped_locations = set(model_data['location_id']).difference(df['location_id'])
     if dropped_locations:
         logger.warning(f"Dropped {sorted(list(dropped_locations))} from data due to lack of cases or deaths.")
 
-    return df, no_cases_locs
+    return df, no_cases_locs, no_hosp_locs
 
 
-def fill_dates(df: pd.DataFrame) -> pd.DataFrame:
+def fill_dates(df: pd.DataFrame, interp_var: str = None) -> pd.DataFrame:
     """Forward fill data by date."""
     df = df.sort_values('Date').set_index('Date')
-    df = df.asfreq('D', method='pad').reset_index()
-
+    df = df.asfreq('D').reset_index()
+    if interp_var:
+        df[interp_var] = df[interp_var].interpolate()
+    df = df.fillna(method='pad')
+    
     return df

@@ -19,14 +19,14 @@ def apply_floor(vals: np.array, floor_val: float) -> np.array:
     return vals
 
 
-def run_smoothing_model(mod_df: pd.DataFrame, spline_options: Dict, 
+def run_smoothing_model(mod_df: pd.DataFrame, n_i_knots: int, spline_options: Dict,
                         pred_df: pd.DataFrame, ensemble_knots: np.array = None) -> np.array:
         mr_model = SplineFit(
             data=mod_df,
             dep_var='y',
             spline_var='x',
             indep_vars=['intercept'],
-            n_i_knots=5,
+            n_i_knots=n_i_knots,
             spline_options=spline_options,
             ensemble_knots=ensemble_knots,
             scale_se=True,
@@ -102,8 +102,11 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
         }
     if not daily:
         spline_options.update({'prior_spline_monotonicity':'increasing'})
+        n_i_knots = 4
+    else:
+        n_i_knots = 5
     pred_df = pd.DataFrame({'intercept':1, 'x': x})
-    smooth_y, ensemble_knots = run_smoothing_model(mod_df, spline_options, pred_df)
+    smooth_y, ensemble_knots = run_smoothing_model(mod_df, n_i_knots, spline_options, pred_df)
 
     # get uncertainty in ln(daily)
     if log:
@@ -129,8 +132,8 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     noisy_draws = np.exp(noisy_draws)
     smooth_y = np.exp(smooth_y)
     if not daily:
-        noisy_draws = np.cumsum(noisy_draws, axis=1)
-        smooth_y = np.cumsum(smooth_y, axis=1)
+        noisy_draws = np.cumsum(noisy_draws, axis=0)
+        smooth_y = np.cumsum(smooth_y, axis=0)
     if log:
         noisy_draws = np.log(noisy_draws)
         smooth_y = np.log(smooth_y)
@@ -146,7 +149,8 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     scaled_ensemble_knots = [rescale_k(x_fit, ek, x) for ek in ensemble_knots]
     scaled_ensemble_knots = np.vstack(scaled_ensemble_knots)
     _combiner = functools.partial(run_smoothing_model,
-                                  spline_options=spline_options, 
+                                  n_i_knots=n_i_knots,
+                                  spline_options=spline_options,
                                   pred_df=pred_df,
                                   ensemble_knots=scaled_ensemble_knots)
     with multiprocessing.Pool(20) as p:

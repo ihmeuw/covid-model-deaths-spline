@@ -65,7 +65,7 @@ def cfr_model(location_id: int,
     if (df[dep_var] * df['population']).max() > 20:
         n_i_knots = 5
     else:
-        n_i_knots = 3
+        n_i_knots = 4
     spline_options={
         'spline_knots_type': 'frequency',
         'spline_degree': 3,

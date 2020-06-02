@@ -127,10 +127,13 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     
     # refit - currently in ln(daily), transform to correct fit space
     noisy_draws = np.exp(noisy_draws)
+    smooth_y = np.exp(smooth_y)
     if not daily:
         noisy_draws = np.cumsum(noisy_draws, axis=1)
+        smooth_y = np.cumsum(smooth_y, axis=1)
     if log:
         noisy_draws = np.log(noisy_draws)
+        smooth_y = np.log(smooth_y)
     draw_mod_dfs = [
         pd.DataFrame({
             'y':nd,

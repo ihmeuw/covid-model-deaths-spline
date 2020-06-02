@@ -25,6 +25,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     logger.debug("Loading and cleaning data.")
     hierarchy = data.load_most_detailed_locations(input_root)
     full_data = data.load_full_data(input_root)
+    full_data = full_data.loc[full_data['location_id'] != 60363]
     case_data = data.get_shifted_data(full_data, 'Confirmed', 'Confirmed case rate')
     hosp_data = data.get_shifted_data(full_data, 'Hospitalizations', 'Hospitalization rate')
     death_data = data.get_death_data(full_data)
@@ -94,9 +95,9 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     for result_path in results_path.iterdir():
         with result_path.open('rb') as result_file:
             results.append(pickle.load(result_file))
-    model_data = pd.concat([r['model_data'] for r in results])
-    noisy_draws = pd.concat([r['noisy_draws'] for r in results])
-    smooth_draws = pd.concat([r['smooth_draws'] for r in results])
+    model_data = pd.concat([r['model_data'] for r in results]).reset_index(drop=True)
+    noisy_draws = pd.concat([r['noisy_draws'] for r in results]).reset_index(drop=True)
+    smooth_draws = pd.concat([r['smooth_draws'] for r in results]).reset_index(drop=True)
 
     #
     logger.debug("Synthesizing plots.")

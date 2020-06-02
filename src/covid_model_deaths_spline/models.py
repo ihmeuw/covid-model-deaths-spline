@@ -38,6 +38,8 @@ def run_models(location_id: int, data_path: str, settings_path: str):
             lambda x, y: pd.merge(x, y, how='outer'),
             model_data_list
         )
+    else:
+        model_data = model_data.loc[model_data['location_id'] == location_id].reset_index(drop=True)
     keep_cols = ['location_id', 'location_name', 'Date', 
                  'Confirmed case rate', 'Hospitalization rate', 'Death rate', 
                  'Predicted death rate (CFR)', 'Predicted death rate (HFR)', 'population']

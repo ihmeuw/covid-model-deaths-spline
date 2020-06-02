@@ -237,15 +237,3 @@ def synthesize_time_series(location_id: int,
                 f"{plot_dir}/{df['location_id'][0]}.pdf")
 
     return noisy_draws, smooth_draws
-
-
-def get_plot_idx(i: int, n_vars: int):
-    if n_vars > 1:
-        top_idx = 0, i
-        bottom_idx = 1, i
-    else:
-        top_idx = 0
-        bottom_idx = 1
-    return top_idx, bottom_idx
-
-

@@ -4,6 +4,16 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 
+def get_plot_idx(i: int, n_vars: int):
+    if n_vars > 1:
+        top_idx = 0, i
+        bottom_idx = 1, i
+    else:
+        top_idx = 0
+        bottom_idx = 1
+    return top_idx, bottom_idx
+
+
 def plotter(df: pd.DataFrame, plot_vars: List[str], plot_file: str):
     # set up plot
     sns.set_style('whitegrid')

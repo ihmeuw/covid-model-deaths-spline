@@ -61,7 +61,7 @@ def draw_cleanup(draws: np.array, log: bool, daily: bool, smooth_y: np.array, x:
 
 
 def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
-             n_draws: int, daily: bool, log: bool) -> Tuple[pd.DataFrame, pd.DataFrame]:
+             n_i_knots: int, n_draws: int, daily: bool, log: bool) -> Tuple[pd.DataFrame, pd.DataFrame]:
     # extract inputs
     df = df.sort_values('Date').reset_index(drop=True)
     floor = 0.01 / df['population'][0]
@@ -101,9 +101,6 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
         }
     if not daily:
         spline_options.update({'prior_spline_monotonicity':'increasing'})
-        n_i_knots = 4
-    else:
-        n_i_knots = 5
     pred_df = pd.DataFrame({'intercept':1, 'x': x})
     smooth_y, ensemble_knots = run_smoothing_model(mod_df, n_i_knots, spline_options, pred_df)
 
@@ -184,14 +181,18 @@ def synthesize_time_series(location_id: int,
 
     # spline on output (first determine space based on number of deaths)
     log = True
+    daily = False
     if (df['Death rate'] * df['population']).max() < 20:
-        daily = False
+        #daily = False
+        n_i_knots = 4
     else:
-        daily = True
+        #daily = True
+        n_i_knots = 5
     noisy_draws, smooth_draws = smoother(
-        df=df.copy(), 
-        obs_var=obs_var, 
-        pred_vars=pred_vars, 
+        df=df.copy(),
+        obs_var=obs_var,
+        pred_vars=pred_vars,
+        n_i_knots=n_i_knots,
         n_draws=n_draws, 
         daily=daily, 
         log=log

@@ -96,22 +96,6 @@ class SplineFit:
         self.submodel_fits = None
         self.coef_dicts = None
         
-    def rescale_k(self, x_from: np.array, x_to: np.array, ensemble_knots: np.array) -> np.array:
-        ensemble_knots = ensemble_knots.copy()
-        
-        def _rescale_k(x1, k, x2):
-            k1_n = x1.min() + k * x1.ptp()
-            k2 = (k1_n - x2.min()) / x2.ptp()
-            return k2
-
-        ensemble_knots = [_rescale_k(x_from, ek, x_to) for ek in ensemble_knots]
-        ensemble_knots = np.vstack(ensemble_knots)
-
-        ensemble_knots[:,0] = 0
-        ensemble_knots[:,-1] = 1
-
-        return ensemble_knots
-        
     def get_ensemble_knots(self, n_i_knots: int, spline_data: np.array, observed: np.array, 
                            spline_options: Dict, N: int = 50) -> List[np.array]:
         # sample
@@ -138,7 +122,7 @@ class SplineFit:
         if (~observed).any():
             if spline_options['spline_knots_type'] != 'domain':
                 raise ValueError('Expecting `spline_knots_type` domain for knot rescaling (stage 2 model).')
-            ensemble_knots = self.rescale_k(spline_data[observed], spline_data, ensemble_knots)
+            ensemble_knots = rescale_k(spline_data[observed], spline_data, ensemble_knots)
         
         # make sure we have unique knots
         _ensemble_knots = []
@@ -193,3 +177,20 @@ class SplineFit:
             preds += [mat.dot(coef)]
 
         return np.sum(preds, axis=0)
+
+    
+def rescale_k(x_from: np.array, x_to: np.array, ensemble_knots: np.array) -> np.array:
+    ensemble_knots = ensemble_knots.copy()
+
+    def _rescale_k(x1, k, x2):
+        k1_n = x1.min() + k * x1.ptp()
+        k2 = (k1_n - x2.min()) / x2.ptp()
+        return k2
+
+    ensemble_knots = [_rescale_k(x_from, ek, x_to) for ek in ensemble_knots]
+    ensemble_knots = np.vstack(ensemble_knots)
+
+    ensemble_knots[:,0] = 0
+    ensemble_knots[:,-1] = 1
+
+    return ensemble_knots

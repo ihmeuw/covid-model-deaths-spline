@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import tqdm
 
-from covid_model_deaths_spline.mr_spline import SplineFit
+from covid_model_deaths_spline.mr_spline import SplineFit, rescale_k
 from covid_model_deaths_spline.plotter import plotter
 
 
@@ -145,6 +145,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
         }) 
         for nd in noisy_draws.T
     ]
+    ensemble_knots = rescale_k(ln_daily_mod_df['x'].values, x, ensemble_knots)
     _combiner = functools.partial(run_smoothing_model,
                                   n_i_knots=n_i_knots,
                                   spline_options=ln_daily_spline_options,

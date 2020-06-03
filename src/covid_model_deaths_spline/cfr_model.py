@@ -59,7 +59,7 @@ def cfr_model(location_id: int,
     non_na = ~mod_df[adj_vars[dep_var]].isnull()
     mod_df = mod_df.loc[above_thresh & has_x & non_na, ['intercept'] + list(adj_vars.values())].reset_index(drop=True)
     if len(mod_df) < 3:
-        raise ValueError(f"Fewer than 3 days {deaths_threshold}+ deaths and 1+ cases in {df['location_name'][0]}")
+        raise ValueError(f"Fewer than 3 days with deaths {df['location_name'][0]}")
 
     # run model and predict
     if len(mod_df) >= 25:

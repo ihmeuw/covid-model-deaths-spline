@@ -95,8 +95,7 @@ class SplineFit:
         self.submodel_fits = None
         self.coef_dicts = None
         
-    @staticmethod
-    def rescale_k(x_from: np.array, x_to: np.array, ensemble_knots: np.array) -> np.array:
+    def rescale_k(self, x_from: np.array, x_to: np.array, ensemble_knots: np.array) -> np.array:
         ensemble_knots = ensemble_knots.copy()
 
         _rescale_k = lambda x1, k, x2: (np.quantile(x1, k) - x2.min()) / x2.ptp()
@@ -109,8 +108,7 @@ class SplineFit:
 
         return ensemble_knots
         
-    @staticmethod
-    def get_ensemble_knots(n_i_knots: int, spline_data: np.array, observed: np.array, N: int = 50) -> List[np.array]:
+    def get_ensemble_knots(self, n_i_knots: int, spline_data: np.array, observed: np.array, N: int = 50) -> List[np.array]:
         # sample
         n_intervals = n_i_knots + 1
         k_start = 0.

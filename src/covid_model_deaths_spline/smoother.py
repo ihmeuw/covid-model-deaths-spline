@@ -72,8 +72,7 @@ def process_inputs(y: np.array, x: np.array, subset_idx: np.array, mono: bool):
     return mod_df, spline_options
     
     
-def draw_cleanup(draws: np.array, log: bool, daily: bool, smooth_y: np.array, x: np.array,
-                 df: pd.DataFrame) -> pd.DataFrame:
+def draw_cleanup(draws: np.array, smooth_y: np.array, x: np.array, df: pd.DataFrame) -> pd.DataFrame:
     # set to linear, add up cumulative, and create dataframe
     draws = np.exp(draws)
     draws *= np.exp(smooth_y) / draws.mean(axis=1, keepdims=True)

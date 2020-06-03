@@ -70,7 +70,8 @@ class SplineFit:
         if 'spline_knots' in list(spline_options.keys()):
             raise ValueError('Using random spline, do not manually specify knots.')
         if ensemble_knots is None:
-            ensemble_knots = self.get_ensemble_knots(n_i_knots, data[spline_var].values, data[observed_var].values)
+            ensemble_knots = self.get_ensemble_knots(n_i_knots, data[spline_var].values, 
+                                                     data[observed_var].values, spline_options)
         
         # spline cov model
         spline_model = LinearCovModel(
@@ -97,8 +98,11 @@ class SplineFit:
         
     def rescale_k(self, x_from: np.array, x_to: np.array, ensemble_knots: np.array) -> np.array:
         ensemble_knots = ensemble_knots.copy()
-
-        _rescale_k = lambda x1, k, x2: (np.quantile(x1, k) - x2.min()) / x2.ptp()
+        
+        def _rescale_k(x1, k, x2):
+            k1_n = x1.min() + k * x1.ptp()
+            k2 = (k1_n - x2.min()) / x2.ptp()
+            return k2
 
         ensemble_knots = [_rescale_k(x_from, ek, x_to) for ek in ensemble_knots]
         ensemble_knots = np.vstack(ensemble_knots)
@@ -108,7 +112,8 @@ class SplineFit:
 
         return ensemble_knots
         
-    def get_ensemble_knots(self, n_i_knots: int, spline_data: np.array, observed: np.array, N: int = 50) -> List[np.array]:
+    def get_ensemble_knots(self, n_i_knots: int, spline_data: np.array, observed: np.array, 
+                           spline_options: Dict, N: int = 50) -> List[np.array]:
         # sample
         n_intervals = n_i_knots + 1
         k_start = 0.
@@ -131,6 +136,8 @@ class SplineFit:
             
         # rescale to observed
         if (~observed).any():
+            if spline_options['spline_knots_type'] != 'domain':
+                raise ValueError('Expecting `spline_knots_type` domain for knot rescaling (stage 2 model).')
             ensemble_knots = self.rescale_k(spline_data[observed], spline_data, ensemble_knots)
         
         # make sure we have unique knots

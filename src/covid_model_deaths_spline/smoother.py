@@ -61,13 +61,13 @@ def process_inputs(y: np.array, x: np.array, subset_idx: np.array, mono: bool):
     })
     mod_df['observed'] = mod_df['observed'].astype(bool)
     spline_options={
-            'spline_knots_type': 'frequency',
+            'spline_knots_type': 'domain',
             'spline_degree': 3,
-            'spline_r_linear':True,
-            'spline_l_linear':True,
+            'spline_r_linear': True,
+            'spline_l_linear': True
         }
     if mono:
-        spline_options.update({'prior_spline_monotonicity':'increasing'})
+        spline_options.update({'prior_spline_monotonicity': 'increasing'})
     
     return mod_df, spline_options
     
@@ -142,7 +142,9 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
             'intercept':1,
             'x':x,
             'observed':True
-        }) for nd in noisy_draws.T]
+        }) 
+        for nd in noisy_draws.T
+    ]
     _combiner = functools.partial(run_smoothing_model,
                                   n_i_knots=n_i_knots,
                                   spline_options=ln_daily_spline_options,
@@ -158,17 +160,6 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     smooth_draws = draw_cleanup(smooth_draws, smooth_y, x, df)
 
     return noisy_draws, smooth_draws
-
-
-def refit_parallel(data: List[pd.DataFrame],
-                   **model_args) -> pd.DataFrame:
-    _combiner = functools.partial(synthesize_time_series,
-                                  data=data, plot_dir=plot_dir,
-                                  **model_args)
-    location_ids = data['location_id'].unique().tolist()
-    with multiprocessing.Pool(20) as p:
-        draw_data_dfs = list(tqdm.tqdm(p.imap(_combiner, location_ids), total=len(location_ids)))
-    return pd.concat(draw_data_dfs).reset_index(drop=True)
 
 
 def synthesize_time_series(location_id: int,

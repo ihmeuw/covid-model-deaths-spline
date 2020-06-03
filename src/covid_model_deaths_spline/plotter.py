@@ -16,7 +16,7 @@ def get_plot_idx(i: int, n_vars: int):
     return top_idx, bottom_idx
 
 
-def plotter(df: pd.DataFrame, plot_vars: List[str], plot_file: str):
+def plotter(df: pd.DataFrame, plot_vars: List[str], plot_file: str = None):
     # set up plot
     sns.set_style('whitegrid')
     fig, ax = plt.subplots(2, len(plot_vars), figsize=(len(plot_vars)*11, 16))
@@ -122,5 +122,8 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], plot_file: str):
 
     fig.suptitle(df['location_name'].values[0], y=1.0025, fontsize=14)
     fig.tight_layout()
-    fig.savefig(plot_file, bbox_inches='tight')
-    plt.close(fig)
+    if plot_file:
+        fig.savefig(plot_file, bbox_inches='tight')
+        plt.close(fig)
+    else:
+        fig.show()

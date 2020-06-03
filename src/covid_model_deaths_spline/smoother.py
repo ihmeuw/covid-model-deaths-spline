@@ -143,15 +143,12 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
             'x':x,
             'observed':True
         }) for nd in noisy_draws.T]
-    rescale_k = lambda x1, k, x2: (np.quantile(x1, k) - x2.min()) / x2.ptp()
-    scaled_ensemble_knots = [rescale_k(ln_daily_mod_df['x'].values, ek, x) for ek in ensemble_knots]
-    scaled_ensemble_knots = np.vstack(scaled_ensemble_knots)
     _combiner = functools.partial(run_smoothing_model,
                                   n_i_knots=n_i_knots,
                                   spline_options=ln_daily_spline_options,
                                   pred_df=pred_df,
                                   scale_se=True,
-                                  ensemble_knots=scaled_ensemble_knots)
+                                  ensemble_knots=ensemble_knots)
     with multiprocessing.Pool(20) as p:
         smooth_draws = list(tqdm.tqdm(p.imap(_combiner, draw_mod_dfs), total=n_draws))
     smooth_draws = np.vstack(smooth_draws).T
@@ -178,7 +175,7 @@ def synthesize_time_series(location_id: int,
                            data: pd.DataFrame,
                            obs_var: str, pred_vars: List[str],
                            spline_vars: List[str],
-                           n_draws: int = 500, plot_dir: str = None) -> pd.DataFrame:
+                           n_draws: int = 1000, plot_dir: str = None) -> pd.DataFrame:
     # location data
     df = data[data.location_id == location_id]
 

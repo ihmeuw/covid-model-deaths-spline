@@ -32,6 +32,9 @@ class SplineFit:
             if not data[observed_var].dtype == 'bool':
                 raise ValueError(f'Observed variable ({observed_var}) is not boolean.')
             data.loc[~data[observed_var], 'obs_se'] *= pseudo_se_multiplier
+        else:
+            observed_var = 'observed'
+            data[observed_var] = True
 
         # create mrbrt object
         data['study_id'] = 1
@@ -67,7 +70,7 @@ class SplineFit:
         if 'spline_knots' in list(spline_options.keys()):
             raise ValueError('Using random spline, do not manually specify knots.')
         if ensemble_knots is None:
-            ensemble_knots = self.get_ensemble_knots(n_i_knots, data[spline_var].values)
+            ensemble_knots = self.get_ensemble_knots(n_i_knots, data[spline_var].values, data[observed_var].values)
         
         # spline cov model
         spline_model = LinearCovModel(
@@ -93,16 +96,30 @@ class SplineFit:
         self.coef_dicts = None
         
     @staticmethod
-    def get_ensemble_knots(n_i_knots: int, spline_data: np.array, N: int = 50) -> List[np.array]:
+    def rescale_k(x_from: np.array, x_to: np.array, ensemble_knots: np.array) -> np.array:
+        ensemble_knots = ensemble_knots.copy()
+
+        _rescale_k = lambda x1, k, x2: (np.quantile(x1, k) - x2.min()) / x2.ptp()
+
+        ensemble_knots = [_rescale_k(x_from, ek, x_to) for ek in ensemble_knots]
+        ensemble_knots = np.vstack(ensemble_knots)
+
+        ensemble_knots[:,0] = 0
+        ensemble_knots[:,-1] = 1
+
+        return ensemble_knots
+        
+    @staticmethod
+    def get_ensemble_knots(n_i_knots: int, spline_data: np.array, observed: np.array, N: int = 50) -> List[np.array]:
         # sample
         n_intervals = n_i_knots + 1
         k_start = 0.
         k_end = 1.
         if n_i_knots >= 3:
-            if np.quantile(spline_data, (0, 0.05)).ptp() > 1e-10:
+            if np.diff([spline_data.min(), np.quantile(spline_data[observed], 0.05)]) > 1e-10:
                 n_intervals -= 1
                 k_start = 0.1
-            if np.quantile(spline_data, (0.95, 1.)).ptp() > 1e-10:
+            if np.diff([np.quantile(spline_data[observed], 0.95), spline_data.max()]) > 1e-10:
                 n_intervals -= 1
                 k_end = 0.9
         ensemble_knots = utils.sample_knots(n_intervals, 
@@ -113,6 +130,10 @@ class SplineFit:
             ensemble_knots = np.insert(ensemble_knots, 1, 0.05, 1)
         if k_end == 0.9:
             ensemble_knots = np.insert(ensemble_knots, -1, 0.95, 1)
+            
+        # rescale to observed
+        if (~observed).any():
+            ensemble_knots = self.rescale_k(spline_data[observed], spline_data, ensemble_knots)
         
         # make sure we have unique knots
         _ensemble_knots = []

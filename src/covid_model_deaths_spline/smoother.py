@@ -147,7 +147,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
             'observed':True
         }) for nd in noisy_draws.T]
     rescale_k = lambda x1, k, x2: (np.quantile(x1, k) - x2.min()) / x2.ptp()
-    scaled_ensemble_knots = [rescale_k(x_fit, ek, x) for ek in ensemble_knots]
+    scaled_ensemble_knots = [rescale_k(ln_daily_mod_df['x'].values, ek, x) for ek in ensemble_knots]
     scaled_ensemble_knots = np.vstack(scaled_ensemble_knots)
     _combiner = functools.partial(run_smoothing_model,
                                   n_i_knots=n_i_knots,

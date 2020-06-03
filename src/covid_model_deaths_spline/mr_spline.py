@@ -107,14 +107,9 @@ class SplineFit:
                 n_intervals -= 1
                 k_start = 0.1
             #
-            if np.diff([spline_data[observed].max(), spline_data.max()]) > 1e-10:
-                n_intervals -= 1
-                k_end = 0.95
-                obs_upper = 1
-            elif np.diff([np.quantile(spline_data[observed], 0.95), spline_data.max()]) > 1e-10:
+            if np.diff([np.quantile(spline_data[observed], 0.95), spline_data.max()]) > 1e-10:
                 n_intervals -= 1
                 k_end = 0.9
-                obs_upper = 0.95
         ensemble_knots = utils.sample_knots(n_intervals, 
                                             b=np.array([[k_start, k_end]]*(n_intervals-1)),
                                             d=np.array([[0.05, 1]]*n_intervals),
@@ -122,7 +117,7 @@ class SplineFit:
         if k_start > 0.:
             ensemble_knots = np.insert(ensemble_knots, 1, 0.05, 1)
         if k_end < 1.:
-            ensemble_knots = np.insert(ensemble_knots, -1, obs_upper, 1)
+            ensemble_knots = np.insert(ensemble_knots, -1, 0.95, 1)
             
         # rescale to observed
         if (~observed).any():

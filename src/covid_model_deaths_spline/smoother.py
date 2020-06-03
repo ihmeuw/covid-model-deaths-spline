@@ -167,7 +167,7 @@ def synthesize_time_series(location_id: int,
                            data: pd.DataFrame,
                            obs_var: str, pred_vars: List[str],
                            spline_vars: List[str],
-                           n_draws: int = 500, plot_dir: str = None) -> pd.DataFrame:
+                           n_draws: int = 1000, plot_dir: str = None) -> pd.DataFrame:
     # location data
     df = data[data.location_id == location_id]
 

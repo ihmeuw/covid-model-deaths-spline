@@ -7,7 +7,7 @@ from loguru import logger
 import pandas as pd
 import yaml
 
-from covid_model_deaths_spline import data, cfr_model, smoother, pdf_merger, cluster
+from covid_model_deaths_spline import aggregate, data, cfr_model, smoother, summarize, pdf_merger, cluster
 
 warnings.simplefilter('ignore')
 
@@ -99,21 +99,25 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     no_hosp_data = model_data.loc[no_hosp]
     hfr_model_data = cfr_model.cfr_model_parallel(model_data.loc[~no_hosp], model_dir, 'HFR', **var_dict)
     hfr_model_data = hfr_model_data.append(no_hosp_data)
-    
+
     # combine CFR and HFR data
-    model_data = cfr_model_data.loc[:,['location_id', 'location_name', 'Date', 
-                                       'Confirmed case rate', 'Death rate', 
+    model_data = cfr_model_data.loc[:,['location_id', 'location_name', 'Date',
+                                       'Confirmed case rate', 'Death rate',
                                        'Predicted death rate (CFR)', 'population']].merge(
-        hfr_model_data.loc[:,['location_id', 'location_name', 'Date', 
-                              'Hospitalization rate', 'Death rate', 
+        hfr_model_data.loc[:,['location_id', 'location_name', 'Date',
+                              'Hospitalization rate', 'Death rate',
                               'Predicted death rate (HFR)', 'population']],
         how='outer'
-    )    
-    
+    )
+
     logger.debug('Synthesizing time series.')
     var_dict = {'dep_var': 'Death rate',
                 'indep_vars': ['Confirmed case rate', 'Hospitalization rate']}
     draw_df = smoother.synthesize_time_series_parallel(model_data, plot_dir, **var_dict)
+
+    agg_model_data = aggregate.compute_location_aggregates_data(model_data, hierarchy)
+    agg_draw_df = aggregate.compute_location_aggregates_draws(draw_df.rename(columns={'date': 'Date'}), hierarchy)
+    summarize.summarize_and_plot(agg_draw_df, agg_model_data, plot_dir, **var_dict)
 
     logger.debug("Synthesizing plots.")
     pdf_merger.pdf_merger(indir=plot_dir, outfile=str(output_root / 'model_results.pdf'))

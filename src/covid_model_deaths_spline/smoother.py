@@ -80,8 +80,6 @@ def draw_cleanup(draws: np.array, smooth_y: np.array, x: np.array, df: pd.DataFr
 
     # store in dataframe
     draw_df = df.loc[x, ['location_id', 'Date', 'population']].reset_index(drop=True)
-    draw_df['Smooth log'] = log
-    draw_df['Smooth daily'] = daily
     draw_df = pd.concat([draw_df, 
                          pd.DataFrame(draws, columns=[f'draw_{d}' for d in range(draws.shape[1])])], axis=1)
     

@@ -119,10 +119,10 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     from_cumul = np.exp(ln_cumul_smooth_y)
     from_cumul[1:] = np.diff(from_cumul)
     from_daily = np.exp(ln_daily_smooth_y)
-    d_w = max(0, total_deaths - 50.) / 50.
-    d_w = min(d_w, 1)
-    c_w = max(0, 100. - total_deaths) / 50.
-    c_w = min(c_w, 1)
+    d_w = min(max(0, total_deaths - 50.) / 50., 
+              1.)
+    c_w = min(max(0, 100. - total_deaths) / 50.,
+              1.)
     smooth_y = from_daily * d_w + from_cumul * c_w
     smooth_y = np.log(smooth_y)
 
@@ -167,16 +167,18 @@ def synthesize_time_series(location_id: int,
                            data: pd.DataFrame,
                            obs_var: str, pred_vars: List[str],
                            spline_vars: List[str],
-                           n_draws: int = 1000, plot_dir: str = None) -> pd.DataFrame:
+                           n_draws: int = 500, plot_dir: str = None) -> pd.DataFrame:
     # location data
     df = data[data.location_id == location_id]
 
     # spline on output (first determine space based on number of deaths)
     total_deaths = (df['Death rate'] * df['population']).max()
-    if total_deaths <= 50:
+    if len(df) >= 25:
+        n_i_knots = 5
+    elif len(df) >= 20:
         n_i_knots = 4
     else:
-        n_i_knots = 5
+        n_i_knots = 3
     noisy_draws, smooth_draws = smoother(
         df=df.copy(),
         obs_var=obs_var,

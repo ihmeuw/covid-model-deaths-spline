@@ -62,10 +62,12 @@ def cfr_model(location_id: int,
         raise ValueError(f"Fewer than 3 days {deaths_threshold}+ deaths and 1+ cases in {df['location_name'][0]}")
 
     # run model and predict
-    if (df[dep_var] * df['population']).max() <= 50:
+    if len(mod_df) >= 25:
+        n_i_knots = 5
+    elif len(mod_df) >= 20:
         n_i_knots = 4
     else:
-        n_i_knots = 5
+        n_i_knots = 3
     spline_options={
         'spline_knots_type': 'frequency',
         'spline_degree': 3,

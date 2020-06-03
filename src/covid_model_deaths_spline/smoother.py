@@ -18,7 +18,7 @@ def apply_floor(vals: np.array, floor_val: float) -> np.array:
     return vals
 
 
-def run_smoothing_model(mod_df: pd.DataFrame, n_i_knots: int, spline_options: Dict,
+def run_smoothing_model(mod_df: pd.DataFrame, n_i_knots: int, spline_options: Dict, scale_se: bool,
                         pred_df: pd.DataFrame, ensemble_knots: np.array = None) -> np.array:
         mr_model = SplineFit(
             data=mod_df,
@@ -28,7 +28,7 @@ def run_smoothing_model(mod_df: pd.DataFrame, n_i_knots: int, spline_options: Di
             n_i_knots=n_i_knots,
             spline_options=spline_options,
             ensemble_knots=ensemble_knots,
-            scale_se=True,
+            scale_se=scale_se,
             observed_var='observed',
             pseudo_se_multiplier=1.33
         )
@@ -112,10 +112,10 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     )
     pred_df = pd.DataFrame({'intercept':1, 'x': x})
     ln_cumul_smooth_y, ensemble_knots = run_smoothing_model(
-        ln_cumul_mod_df, n_i_knots, ln_cumul_spline_options, pred_df
+        ln_cumul_mod_df, n_i_knots, ln_cumul_spline_options, False, pred_df
     )
     ln_daily_smooth_y = run_smoothing_model(
-        ln_daily_mod_df, n_i_knots, ln_daily_spline_options, pred_df, ensemble_knots
+        ln_daily_mod_df, n_i_knots, ln_daily_spline_options, True, pred_df, ensemble_knots
     )
     
     # average the two in linear daily, then log
@@ -153,6 +153,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
                                   n_i_knots=n_i_knots,
                                   spline_options=ln_daily_spline_options,
                                   pred_df=pred_df,
+                                  scale_se=True,
                                   ensemble_knots=scaled_ensemble_knots)
     with multiprocessing.Pool(20) as p:
         smooth_draws = list(tqdm.tqdm(p.imap(_combiner, draw_mod_dfs), total=n_draws))

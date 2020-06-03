@@ -62,7 +62,7 @@ def cfr_model(location_id: int,
         raise ValueError(f"Fewer than 3 days {deaths_threshold}+ deaths and 1+ cases in {df['location_name'][0]}")
 
     # run model and predict
-    if (df[dep_var] * df['population']).max() > 20:
+    if (df[dep_var] * df['population']).max() <= 50:
         n_i_knots = 5
     else:
         n_i_knots = 4

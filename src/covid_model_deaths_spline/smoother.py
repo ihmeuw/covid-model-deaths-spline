@@ -39,49 +39,16 @@ def run_smoothing_model(mod_df: pd.DataFrame, n_i_knots: int, spline_options: Di
             return smooth_y, mr_model.mr_model.ensemble_knots
         else:
             return smooth_y
-    
-    
-def draw_cleanup(draws: np.array, log: bool, daily: bool, smooth_y: np.array, x: np.array,
-                 df: pd.DataFrame) -> pd.DataFrame:
-    # set to linear, add up cumulative, and create dataframe
-    if log:
-        draws = np.exp(draws)
-        draws *= np.exp(smooth_y) / draws.mean(axis=1, keepdims=True)
-    if daily:
-        draws = draws.cumsum(axis=0)
+        
 
-    # store in dataframe
-    draw_df = df.loc[x, ['location_id', 'Date', 'population']].reset_index(drop=True)
-    draw_df['Smooth log'] = log
-    draw_df['Smooth daily'] = daily
-    draw_df = pd.concat([draw_df, 
-                         pd.DataFrame(draws, columns=[f'draw_{d}' for d in range(draws.shape[1])])], axis=1)
-    
-    return draw_df
-
-
-def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
-             n_i_knots: int, n_draws: int, daily: bool, log: bool) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    # extract inputs
-    df = df.sort_values('Date').reset_index(drop=True)
-    floor = 0.01 / df['population'][0]
-    keep_idx = ~df[[obs_var] + pred_vars].isnull().all(axis=1)
-    max_1week_of_zeros = (df[obs_var][::-1] == 0).cumsum()[::-1] <= 7
-    y = df.loc[keep_idx, [obs_var] + pred_vars].values
-    if daily:
-        y[1:] = np.diff(y, axis=0)
-    if log:
-        y = apply_floor(y, floor)
-        y = np.log(y)
-    x = df.index[keep_idx].values
-
+def process_inputs(y: np.array, x: np.array, subset_idx: np.array, mono: bool):
     # get smoothed curve (dropping NAs, inflating variance for pseudo-deaths)
-    obs_data = y[max_1week_of_zeros].copy()
+    obs_data = y[subset_idx].copy()
     obs_data[:,0] = 1
     obs_data[:,1:] = 0
-    y_fit = y[max_1week_of_zeros].flatten()
+    y_fit = y[subset_idx].flatten()
     obs_data = obs_data.flatten()
-    x_fit = np.repeat(x[max_1week_of_zeros], y.shape[1], axis=0)
+    x_fit = np.repeat(x[subset_idx], y.shape[1], axis=0)
     non_na_idx = ~np.isnan(y_fit)
     y_fit = y_fit[non_na_idx]
     obs_data = obs_data[non_na_idx]
@@ -99,40 +66,79 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
             'spline_r_linear':True,
             'spline_l_linear':True,
         }
-    if not daily:
+    if mono:
         spline_options.update({'prior_spline_monotonicity':'increasing'})
+    
+    return mod_df, spline_options
+    
+    
+def draw_cleanup(draws: np.array, log: bool, daily: bool, smooth_y: np.array, x: np.array,
+                 df: pd.DataFrame) -> pd.DataFrame:
+    # set to linear, add up cumulative, and create dataframe
+    draws = np.exp(draws)
+    draws *= np.exp(smooth_y) / draws.mean(axis=1, keepdims=True)
+    draws = draws.cumsum(axis=0)
+
+    # store in dataframe
+    draw_df = df.loc[x, ['location_id', 'Date', 'population']].reset_index(drop=True)
+    draw_df['Smooth log'] = log
+    draw_df['Smooth daily'] = daily
+    draw_df = pd.concat([draw_df, 
+                         pd.DataFrame(draws, columns=[f'draw_{d}' for d in range(draws.shape[1])])], axis=1)
+    
+    return draw_df
+
+
+def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
+             n_i_knots: int, n_draws: int, total_deaths: float) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    # extract inputs
+    df = df.sort_values('Date').reset_index(drop=True)
+    floor = 0.01 / df['population'][0]
+    keep_idx = ~df[[obs_var] + pred_vars].isnull().all(axis=1)
+    max_1week_of_zeros = (df[obs_var][::-1] == 0).cumsum()[::-1] <= 7
+    cumul_y = df.loc[keep_idx, [obs_var] + pred_vars].values
+    daily_y = cumul_y.copy()
+    daily_y[1:] = np.diff(daily_y, axis=0)
+    ln_cumul_y = np.log(apply_floor(cumul_y, floor))
+    ln_daily_y = np.log(apply_floor(daily_y, floor))
+    x = df.index[keep_idx].values
+
+    # prepare data
+    ln_cumul_mod_df, ln_cumul_spline_options = process_inputs(
+        y=ln_cumul_y, x=x, subset_idx=max_1week_of_zeros, mono=True
+    )
+    ln_daily_mod_df, ln_daily_spline_options = process_inputs(
+        y=ln_daily_y, x=x, subset_idx=max_1week_of_zeros, mono=False
+    )
     pred_df = pd.DataFrame({'intercept':1, 'x': x})
-    smooth_y, ensemble_knots = run_smoothing_model(mod_df, n_i_knots, spline_options, pred_df)
+    ln_cumul_smooth_y, ensemble_knots = run_smoothing_model(
+        ln_cumul_mod_df, n_i_knots, ln_cumul_spline_options, pred_df
+    )
+    ln_daily_smooth_y = run_smoothing_model(
+        ln_daily_mod_df, n_i_knots, ln_daily_spline_options, pred_df, ensemble_knots
+    )
+    
+    # average the two in linear daily, then log
+    from_cumul = np.exp(ln_cumul_smooth_y)
+    from_cumul[1:] = np.diff(from_cumul)
+    from_daily = np.exp(ln_daily_smooth_y)
+    d_w = max(0, total_deaths - 50.) / 50.
+    d_w = min(d_w, 1)
+    c_w = max(0, 100. - total_deaths) / 50.
+    c_w = min(c_w, 1)
+    smooth_y = from_daily * d_w + from_cumul * c_w
+    smooth_y = np.log(smooth_y)
 
     # get uncertainty in ln(daily)
-    if log:
-        y = np.exp(y)
-        smooth_y = np.exp(smooth_y)
-    if not daily:
-        y[1:] = np.diff(y, axis=0)
-        smooth_y[1:] = np.diff(smooth_y)
-    if not log or not daily:
-        y = apply_floor(y, floor)
-        smooth_y = apply_floor(smooth_y, floor)
-    y = np.log(y)
-    smooth_y = np.log(smooth_y)
     smooth_y = np.array([smooth_y]).T
-    residuals = y - smooth_y
+    residuals = ln_daily_y - smooth_y
     residuals = residuals[~np.isnan(residuals)]
     mad = np.median(np.abs(residuals))
     rstd = mad * 1.4826
     noisy_draws = np.random.normal(smooth_y, rstd, (smooth_y.size, n_draws))
     #draws = stats.t.rvs(dof, loc=smooth_y, scale=std, size=(smooth_y.size, n_draws))
     
-    # refit - currently in ln(daily), transform to correct fit space
-    noisy_draws = np.exp(noisy_draws)
-    smooth_y = np.exp(smooth_y)
-    if not daily:
-        noisy_draws = np.cumsum(noisy_draws, axis=0)
-        smooth_y = np.cumsum(smooth_y, axis=0)
-    if log:
-        noisy_draws = np.log(noisy_draws)
-        smooth_y = np.log(smooth_y)
+    # refit in ln(daily)
     draw_mod_dfs = [
         pd.DataFrame({
             'y':nd,
@@ -140,13 +146,12 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
             'x':x,
             'observed':True
         }) for nd in noisy_draws.T]
-    
     rescale_k = lambda x1, k, x2: (np.quantile(x1, k) - x2.min()) / x2.ptp()
     scaled_ensemble_knots = [rescale_k(x_fit, ek, x) for ek in ensemble_knots]
     scaled_ensemble_knots = np.vstack(scaled_ensemble_knots)
     _combiner = functools.partial(run_smoothing_model,
                                   n_i_knots=n_i_knots,
-                                  spline_options=spline_options,
+                                  spline_options=ln_daily_spline_options,
                                   pred_df=pred_df,
                                   ensemble_knots=scaled_ensemble_knots)
     with multiprocessing.Pool(20) as p:
@@ -154,8 +159,8 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     smooth_draws = np.vstack(smooth_draws).T
     
     # make pretty (in linear cumulative space)
-    noisy_draws = draw_cleanup(noisy_draws, log, daily, smooth_y, x, df)
-    smooth_draws = draw_cleanup(smooth_draws, log, daily, smooth_y, x, df)
+    noisy_draws = draw_cleanup(noisy_draws, smooth_y, x, df)
+    smooth_draws = draw_cleanup(smooth_draws, smooth_y, x, df)
 
     return noisy_draws, smooth_draws
 
@@ -180,13 +185,10 @@ def synthesize_time_series(location_id: int,
     df = data[data.location_id == location_id]
 
     # spline on output (first determine space based on number of deaths)
-    log = True
-    daily = False
-    if (df['Death rate'] * df['population']).max() < 20:
-        #daily = False
+    total_deaths = (df['Death rate'] * df['population']).max()
+    if total_deaths <= 50:
         n_i_knots = 4
     else:
-        #daily = True
         n_i_knots = 5
     noisy_draws, smooth_draws = smoother(
         df=df.copy(),
@@ -194,8 +196,7 @@ def synthesize_time_series(location_id: int,
         pred_vars=pred_vars,
         n_i_knots=n_i_knots,
         n_draws=n_draws, 
-        daily=daily, 
-        log=log
+        total_deaths=total_deaths
     )
     draw_cols = [col for col in noisy_draws.columns if col.startswith('draw_')]
 

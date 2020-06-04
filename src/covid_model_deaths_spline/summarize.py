@@ -46,7 +46,7 @@ def append_summary_statistics(draw_df: pd.DataFrame, df: pd.DataFrame) -> pd.Dat
     return df
 
 
-def summarize_and_plot(agg_df: pd.DataFrame, model_data: pd.DataFrame, plot_dir: str, dep_var: str, indep_vars: List[str]) -> pd.DataFrame:
+def summarize_and_plot(agg_df: pd.DataFrame, model_data: pd.DataFrame, plot_dir: str, obs_var: str, spline_vars: List[str]) -> pd.DataFrame:
     # draws are in count space and we need to get back to rate space before
     # plotting
     agg_df = agg_df.set_index(['Date', 'location_id'])
@@ -62,5 +62,5 @@ def summarize_and_plot(agg_df: pd.DataFrame, model_data: pd.DataFrame, plot_dir:
     # of locations, so we should drop those days from data too
     summ_df = summ_df[summ_df['Date'] <= agg_df['Date'].max()]
     smoother.plotter(summ_df,
-                     [dep_var] + list(compress(indep_vars, (~summ_df[indep_vars].isnull().all(axis=0)).to_list())),
+                     [obs_var] + list(compress(spline_vars, (~summ_df[spline_vars].isnull().all(axis=0)).to_list())),
                      f"{plot_dir}/{summ_df['location_id'][0]}.pdf")

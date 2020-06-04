@@ -44,7 +44,7 @@ def get_shifted_data(full_data: pd.DataFrame, count_var: str, rate_var: str, shi
     data = data.loc[non_na & has_data, keep_columns].reset_index(drop=True)
 
     data = (data.groupby('location_id', as_index=False)
-            .apply(lambda x: fill_dates(x))
+            .apply(lambda x: fill_dates(x, rate_var))
             .reset_index(drop=True))
 
     return data
@@ -58,7 +58,7 @@ def get_death_data(full_data: pd.DataFrame) -> pd.DataFrame:
     death_df = full_data.loc[non_na & has_deaths, keep_columns].reset_index(drop=True)
 
     death_df = (death_df.groupby('location_id', as_index=False)
-                .apply(lambda x: fill_dates(x))
+                .apply(lambda x: fill_dates(x, 'Death rate'))
                 .reset_index(drop=True))
 
     return death_df
@@ -144,15 +144,15 @@ def check_counts(model_data: pd.DataFrame, rate_var: str, action: str, threshold
     return df
 
 
-def filter_to_epi_threshold(hierarchy: pd.DataFrame, 
-                            model_data: pd.DataFrame, 
-                            threshold: int = 3) -> Tuple[pd.DataFrame, List[int]]:
+def filter_to_epi_threshold(hierarchy: pd.DataFrame,
+                            model_data: pd.DataFrame,
+                            threshold: int = 3) -> Tuple[pd.DataFrame, List[int], List[int]]:
     """Drop locations that don't have at least `n` deaths; do not use cases or hospitalizations if under `n`."""
     df = model_data.copy()
     df = check_counts(df, 'Confirmed case rate', 'fill_na', threshold)
     days_w_cases = df['Confirmed case rate'].notnull().groupby(df['location_id']).sum()
     no_cases_locs = days_w_cases[days_w_cases == 0].index.to_list()
-    
+
     df = check_counts(df, 'Hospitalization rate', 'fill_na', threshold)
     days_w_hosp = df['Hospitalization rate'].notnull().groupby(df['location_id']).sum()
     no_hosp_locs = days_w_hosp[days_w_hosp == 0].index.to_list()
@@ -173,5 +173,5 @@ def fill_dates(df: pd.DataFrame, interp_var: str = None) -> pd.DataFrame:
     if interp_var:
         df[interp_var] = df[interp_var].interpolate()
     df = df.fillna(method='pad')
-    
+
     return df

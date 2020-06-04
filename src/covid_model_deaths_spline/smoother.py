@@ -112,7 +112,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     last_week['Deaths'] = last_week['Death rate'] * last_week['population']
     last_week['Deaths'][1:] = np.diff(last_week['Deaths'])
     last_week_deaths = last_week.loc[~last_week['Deaths'].isnull()].iloc[-7:]['Deaths'].sum()
-    gprior_se = max(0.1, last_week_deaths) / 10
+    gprior_se = max(1, last_week_deaths) / 10
 
     # prepare data and run daily
     pred_df = pd.DataFrame({'intercept':1, 'x': x})
@@ -162,7 +162,6 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
         for nd in noisy_draws.T
     ]
     ensemble_knots = rescale_k(ln_daily_mod_df['x'].values, x, ensemble_knots)
-    del ln_daily_spline_options['prior_spline_maxder_gaussian']
     _combiner = functools.partial(run_smoothing_model,
                                   n_i_knots=n_i_knots,
                                   spline_options=ln_daily_spline_options,

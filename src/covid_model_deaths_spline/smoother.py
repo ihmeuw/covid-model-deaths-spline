@@ -83,6 +83,7 @@ def draw_cleanup(draws: np.array, smooth_y: np.array, x: np.array, df: pd.DataFr
     # set to linear, add up cumulative, and create dataframe
     draws = np.exp(draws)
     draws *= np.exp(smooth_y) / draws.mean(axis=1, keepdims=True)
+    draws[draws * df['population'].values[0] < 1e-10] = 1e-10 / df['population'].values[0]
     draws = draws.cumsum(axis=0)
 
     # store in dataframe

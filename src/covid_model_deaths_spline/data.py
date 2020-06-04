@@ -8,7 +8,8 @@ import numpy as np
 
 
 def evil_doings(case_data: pd.DataFrame, hosp_data: pd.DataFrame, death_data: pd.DataFrame) -> Tuple[pd.DataFrame]:
-    # even out last 4 days in Tennessee due to spike in reporting
+    # even out days in Tennessee with spike in reporting
+    case_data = case_data.copy()
     tn_df = case_data.loc[case_data['location_id'] == 565]
     bad_days = (tn_df['True date'] >= pd.to_datetime('2020-05-31')) & (tn_df['True date'] <= pd.to_datetime('2020-06-02'))
     tn_df.loc[bad_days, 'Confirmed case rate'] = np.nan

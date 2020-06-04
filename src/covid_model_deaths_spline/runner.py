@@ -43,7 +43,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     death_data, missing_deaths = data.filter_data_by_location(death_data, hierarchy, 'deaths')
     pop_data, missing_pop = data.filter_data_by_location(pop_data, hierarchy, 'population')
     model_data = data.combine_data(case_data, hosp_data, death_data, pop_data, hierarchy)
-    model_data, no_cases_locs, no_hosp_locs = data.filter_to_epi_threshold(hierarchy, model_data)
+    model_data, no_cases_locs, no_hosp_locs = data.filter_to_epi_threshold(hierarchy, model_data, 1)
 
     #
     logger.debug('Preparing model settings.')

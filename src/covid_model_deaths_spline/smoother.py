@@ -189,9 +189,9 @@ def synthesize_time_series(location_id: int,
 
     # spline on output (first determine space based on number of deaths)
     total_deaths = (df['Death rate'] * df['population']).max()
-    if len(df) >= 25:
+    if len(df) >= 30 and total_deaths > 10:
         n_i_knots = 5
-    elif len(df) >= 20:
+    elif len(df) >= 15 and total_deaths > 5:
         n_i_knots = 4
     else:
         n_i_knots = 3

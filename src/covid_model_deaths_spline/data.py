@@ -44,7 +44,7 @@ def get_shifted_data(full_data: pd.DataFrame, count_var: str, rate_var: str, shi
     data = data.loc[non_na & has_data, keep_columns].reset_index(drop=True)
 
     data = (data.groupby('location_id', as_index=False)
-            .apply(lambda x: fill_dates(x))
+            .apply(lambda x: fill_dates(x, rate_var))
             .reset_index(drop=True))
 
     return data
@@ -58,7 +58,7 @@ def get_death_data(full_data: pd.DataFrame) -> pd.DataFrame:
     death_df = full_data.loc[non_na & has_deaths, keep_columns].reset_index(drop=True)
 
     death_df = (death_df.groupby('location_id', as_index=False)
-                .apply(lambda x: fill_dates(x))
+                .apply(lambda x: fill_dates(x, 'Death rate'))
                 .reset_index(drop=True))
 
     return death_df

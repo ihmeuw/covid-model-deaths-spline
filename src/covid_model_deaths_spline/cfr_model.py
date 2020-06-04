@@ -1,5 +1,3 @@
-import functools
-import multiprocessing
 from pathlib import Path
 from typing import Callable, List
 import sys
@@ -16,23 +14,6 @@ from covid_model_deaths_spline.mr_spline import SplineFit
 
 def cfr_death_threshold(data: pd.DataFrame) -> int:
     return max(1, int((data['Death rate'] * data['population']).max() * 0.01))
-
-
-def cfr_model_parallel(data: pd.DataFrame,
-                       model_dir: Path,
-                       model_type: str,
-                       deaths_threshold: Callable[[pd.DataFrame], int] = cfr_death_threshold,
-                       daily: bool = False,
-                       log: bool = True,
-                       **model_args) -> pd.DataFrame:
-    _combiner = functools.partial(cfr_model,
-                                  data=data, model_dir=model_dir, model_type=model_type,
-                                  deaths_threshold=deaths_threshold,
-                                  daily=daily, log=log, **model_args)
-    location_ids = data['location_id'].unique().tolist()
-    with multiprocessing.Pool(20) as p:
-        model_data_dfs = list(tqdm.tqdm(p.imap(_combiner, location_ids), total=len(location_ids)))
-    return pd.concat(model_data_dfs).reset_index(drop=True)
 
 
 def cfr_model(location_id: int,
@@ -78,11 +59,13 @@ def cfr_model(location_id: int,
     non_na = ~mod_df[adj_vars[dep_var]].isnull()
     mod_df = mod_df.loc[above_thresh & has_x & non_na, ['intercept'] + list(adj_vars.values())].reset_index(drop=True)
     if len(mod_df) < 3:
-        raise ValueError(f"Fewer than 3 days {deaths_threshold}+ deaths and 1+ cases in {df['location_name'][0]}")
+        raise ValueError(f"Fewer than 3 days with deaths {df['location_name'][0]}")
 
     # run model and predict
-    if (df[dep_var] * df['population']).max() > 20:
+    if len(mod_df) >= 25:
         n_i_knots = 5
+    elif len(mod_df) >= 20:
+        n_i_knots = 4
     else:
         n_i_knots = 3
     spline_options={
@@ -93,7 +76,7 @@ def cfr_model(location_id: int,
     }
     if not daily:
         spline_options.update({'prior_spline_monotonicity':'increasing'})
-    mr_mod = SplineFit(
+    mr_model = SplineFit(
         data=mod_df,
         dep_var=adj_vars[dep_var],
         spline_var=adj_vars[spline_var],
@@ -102,8 +85,8 @@ def cfr_model(location_id: int,
         spline_options=spline_options,
         scale_se=False
     )
-    mr_mod.fit_model()
-    df['Predicted model death rate'] = mr_mod.predict(df)
+    mr_model.fit_model()
+    df['Predicted model death rate'] = mr_model.predict(df)
     df[f'Predicted death rate ({model_type})'] = df['Predicted model death rate']
     if log:
         df[f'Predicted death rate ({model_type})'] = np.exp(df[f'Predicted death rate ({model_type})'])
@@ -111,27 +94,6 @@ def cfr_model(location_id: int,
         df[f'Predicted death rate ({model_type})'] = df[f'Predicted death rate ({model_type})'].cumsum()
 
     with open(f"{model_dir}/{df['location_id'][0]}_{model_type}.pkl", 'wb') as fwrite:
-        pickle.dump(mr_mod, fwrite, -1)
+        pickle.dump(mr_model, fwrite, -1)
 
     return df
-
-
-def cfr_model_cluster(location_id: int, data_path: str, settings_path: str):
-    with Path(data_path).open('rb') as in_file:
-        in_data = pickle.load(in_file)
-
-    with Path(settings_path).open() as settings_file:
-        cfr_settings = yaml.full_load(settings_file)
-
-    output_dir = Path(cfr_settings['results_dir'])
-    result = cfr_model(location_id, in_data, **cfr_settings)
-    with (output_dir / f'{location_id}.pkl').open('wb') as outfile:
-        pickle.dump(result, outfile, -1)
-
-
-if __name__ == '__main__':
-    loc_id = int(sys.argv[1])
-    data = sys.argv[2]
-    settings = sys.argv[3]
-
-    cfr_model_cluster(loc_id, data, settings)

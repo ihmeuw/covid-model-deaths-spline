@@ -143,8 +143,10 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     smooth_y = np.log(smooth_y)
 
     # get uncertainty in ln(daily)
+    resid_ln_daily_y = ln_daily_y[max_1week_of_zeros]
+    resid_smooth_y = np.array([smooth_y[max_1week_of_zeros]]).T
     smooth_y = np.array([smooth_y]).T
-    residuals = ln_daily_y - smooth_y
+    residuals = resid_ln_daily_y - resid_smooth_y
     residuals = residuals[~np.isnan(residuals)]
     mad = np.median(np.abs(residuals))
     rstd = mad * 1.4826

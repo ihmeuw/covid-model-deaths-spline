@@ -35,11 +35,11 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], plot_file: str = None):
         ax[0, indep_idx].scatter(df['Confirmed case rate'],
                                  df['Death rate'],
                                  **raw_points)
-        ax[0, indep_idx].plot(df.loc[~df['Death rate'].isnull(), 'Confirmed case rate'],
-                              df.loc[~df['Death rate'].isnull(), 'Predicted death rate (CFR)'],
+        ax[0, indep_idx].plot(df['Confirmed case rate'],
+                              df['Predicted death rate (CFR)'],
                               **cfr_lines)
-        ax[0, indep_idx].plot(df.loc[~df['Death rate'].isnull(), 'Confirmed case rate'],
-                              df.loc[~df['Death rate'].isnull(), 'Smoothed predicted death rate'],
+        ax[0, indep_idx].plot(df['Confirmed case rate'],
+                              df['Smoothed predicted death rate'],
                               **smoothed_pred_lines)    
         ax[0, indep_idx].set_xlabel('Cumulative case rate', fontsize=10)
         ax[0, indep_idx].set_ylabel('Cumulative death rate', fontsize=10)
@@ -50,11 +50,11 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], plot_file: str = None):
         ax[0, indep_idx].scatter(df['Hospitalization rate'],
                                  df['Death rate'],
                                  **raw_points)
-        ax[0, indep_idx].plot(df.loc[~df['Death rate'].isnull(), 'Hospitalization rate'],
-                              df.loc[~df['Death rate'].isnull(), 'Predicted death rate (HFR)'],
+        ax[0, indep_idx].plot(df['Hospitalization rate'],
+                              df['Predicted death rate (HFR)'],
                               **hfr_lines)
-        ax[0, indep_idx].plot(df.loc[~df['Death rate'].isnull(), 'Hospitalization rate'],
-                              df.loc[~df['Death rate'].isnull(), 'Smoothed predicted death rate'],
+        ax[0, indep_idx].plot(df['Hospitalization rate'],
+                              df['Smoothed predicted death rate'],
                               **smoothed_pred_lines)
         ax[0, indep_idx].set_xlabel('Cumulative hospitalization rate', fontsize=10)
         ax[0, indep_idx].set_ylabel('Cumulative death rate', fontsize=10)

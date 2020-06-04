@@ -112,7 +112,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     last_week['Deaths'] = last_week['Death rate'] * last_week['population']
     last_week['Deaths'][1:] = np.diff(last_week['Deaths'])
     last_week_deaths = last_week.loc[~last_week['Deaths'].isnull()].iloc[-7:]['Deaths'].sum()
-    gprior_se = (last_week_deaths + 1e-4)
+    gprior_se = (last_week_deaths + 0.1) / 10
 
     # prepare data and run daily
     pred_df = pd.DataFrame({'intercept':1, 'x': x})
@@ -125,15 +125,9 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     )
     
     # run cumulative, using slope after the last knot as the prior mean
-    cutoff = x.min() + ensemble_knots[0][-2] * x.ptp()
-    slope = np.diff(
-        np.log(
-            np.exp(ln_daily_smooth_y[x > cutoff]).cumsum()
-        )
-    ).mean()
     ln_cumul_mod_df, ln_cumul_spline_options = process_inputs(
         y=ln_cumul_y, x=x, n_i_knots=n_i_knots, subset_idx=max_1week_of_zeros, 
-        mono=True, tail_gprior=np.array([slope, gprior_se])
+        mono=True, tail_gprior=np.array([0, gprior_se])
     )
     ln_cumul_smooth_y = run_smoothing_model(
         ln_cumul_mod_df, n_i_knots, ln_cumul_spline_options, False, pred_df, ensemble_knots
@@ -189,7 +183,7 @@ def synthesize_time_series(location_id: int,
                            data: pd.DataFrame,
                            obs_var: str, pred_vars: List[str],
                            spline_vars: List[str],
-                           n_draws: int = 500, plot_dir: str = None) -> pd.DataFrame:
+                           n_draws: int = 1000, plot_dir: str = None) -> pd.DataFrame:
     # location data
     df = data[data.location_id == location_id]
 

@@ -29,6 +29,10 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     hosp_data = data.get_shifted_data(full_data, 'Hospitalizations', 'Hospitalization rate')
     death_data = data.get_death_data(full_data)
     pop_data = data.get_population_data(full_data)
+    
+    #
+    logger.debug("Data manipulation")
+    case_data, hosp_data, death_data = data.evil_doings(case_data, hosp_data, death_data)
 
     #
     logger.debug(f"Dropping {holdout_days} days from the end of the data.")

@@ -8,7 +8,8 @@ def pdf_merger(pdfs=None, indir=None, outfile=None):
     if pdfs is None:
         # check PDF names
         assert indir is not None, 'Must provide either `pdfs` (list) or `indir` (directory where PDFs are found) - not both.'
-        pdfs = sorted([f'{indir}/{i}' for i in os.listdir(indir) if i.endswith('.pdf')])
+        files = sorted(os.listdir(indir), key=lambda x: int(x.split('.pdf')[0]))
+        pdfs = [f'{indir}/{i}' for i in files if i.endswith('.pdf')]
     else:
         # check directory
         assert indir is None, 'Must provide either `pdfs` (list) or `indir` (directory where PDFs are found) - not both.'

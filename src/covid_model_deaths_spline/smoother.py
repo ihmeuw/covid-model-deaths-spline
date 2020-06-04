@@ -83,6 +83,7 @@ def draw_cleanup(draws: np.array, smooth_y: np.array, x: np.array, df: pd.DataFr
     # set to linear, add up cumulative, and create dataframe
     draws = np.exp(draws)
     draws *= np.exp(smooth_y) / draws.mean(axis=1, keepdims=True)
+    draws[draws * df['population'].values[0] < 1e-10] = 1e-10 / df['population'].values[0]
     draws = draws.cumsum(axis=0)
 
     # store in dataframe
@@ -143,8 +144,10 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     smooth_y = np.log(smooth_y)
 
     # get uncertainty in ln(daily)
+    resid_ln_daily_y = ln_daily_y[max_1week_of_zeros]
+    resid_smooth_y = np.array([smooth_y[max_1week_of_zeros]]).T
     smooth_y = np.array([smooth_y]).T
-    residuals = ln_daily_y - smooth_y
+    residuals = resid_ln_daily_y - resid_smooth_y
     residuals = residuals[~np.isnan(residuals)]
     mad = np.median(np.abs(residuals))
     rstd = mad * 1.4826

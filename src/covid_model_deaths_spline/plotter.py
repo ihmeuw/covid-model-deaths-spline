@@ -80,7 +80,7 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], plot_file: str = None):
             ax[bottom_idx].scatter(df['Date'][1:],
                                    np.diff(df[raw_variable]) * df['population'][1:],
                                    **raw_points)
-            ax[bottom_idx].axhline(0, color='black', alpha=0.25)
+            ax[bottom_idx].axhline(0, color='black', alpha=0.5)
             if 'death' in smooth_variable.lower():
                 ax[bottom_idx].set_xlabel('Date', fontsize=10)
             else:

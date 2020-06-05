@@ -1,10 +1,27 @@
 import functools
 from pathlib import Path
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 from loguru import logger
 import pandas as pd
 import numpy as np
+
+
+def evil_doings(case_data: pd.DataFrame,
+                hosp_data: pd.DataFrame,
+                death_data: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, Dict[str, str]]:
+    # Record our sins
+    manipulation_metadata = {}
+    # even out days in Tennessee with spike in reporting
+    case_data = case_data.copy()
+    tn_df = case_data.loc[case_data['location_id'] == 565]
+    bad_days = ((tn_df['True date'] >= pd.to_datetime('2020-05-31'))
+                & (tn_df['True date'] <= pd.to_datetime('2020-06-02')))
+    tn_df.loc[bad_days, 'Confirmed case rate'] = np.nan
+    new_tn = tn_df['Confirmed case rate'].interpolate().values
+    case_data.loc[case_data['location_id'] == 565, 'Confirmed case rate'] = new_tn
+    manipulation_metadata['tennessee'] = 'even out cases spike between 5/31 and 6/2'
+    return case_data, hosp_data, death_data, manipulation_metadata
 
 
 def load_most_detailed_locations(inputs_root: Path) -> pd.DataFrame:

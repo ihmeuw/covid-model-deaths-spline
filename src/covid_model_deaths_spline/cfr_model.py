@@ -32,7 +32,7 @@ def cfr_model(location_id: int,
 
     # log transform, setting floor of 0.01 per population
     df = df.sort_values('Date').reset_index(drop=True)
-    floor = 0.01 / df['population'].values[0]
+    floor = 0.05 / df['population'].values[0]
     adj_vars = {}
     for orig_var in [dep_var, spline_var] + indep_vars:
         mod_var = f'Model {orig_var.lower()}'

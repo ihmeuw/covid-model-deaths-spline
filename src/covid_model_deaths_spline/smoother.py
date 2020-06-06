@@ -3,6 +3,7 @@ from itertools import compress
 import multiprocessing
 from pathlib import Path
 from typing import List, Dict, Tuple
+from collections import namedtuple
 
 import numpy as np
 import pandas as pd
@@ -42,7 +43,7 @@ def run_smoothing_model(mod_df: pd.DataFrame, n_i_knots: int, spline_options: Di
         if results_only:
             return smooth_y
         else:
-            return smooth_y, mr_model, mod_df
+            return smooth_y, mr_model.mr_model, mod_df
 
 
 def process_inputs(y: np.array, col_names: List[str], 
@@ -131,6 +132,19 @@ def get_mad(df: pd.DataFrame, weighted: bool) -> float:
     return mad
 
 
+def find_best_settings(mr_model):
+    x = mr_model.data.df['x'].values
+    knots = x.min() + mr_model.ensemble_knots * x.ptp()
+    betas = [mr.beta_soln for mr in mr_model.sub_models]
+    best_knots = np.average(knots, axis=0, weights=mr_model.weights)
+    best_betas = np.average(betas, axis=0, weights=mr_model.weights)
+    best_betas[1:] += best_betas[0]
+    
+    Results = namedtuple('Results', 'knots betas')
+    
+    return Results(best_knots, best_betas)
+
+
 def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
              n_i_knots: int, n_draws: int, total_deaths: float) -> Tuple[pd.DataFrame, pd.DataFrame]:
     # extract inputs
@@ -144,6 +158,11 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     ln_cumul_y = np.log(apply_floor(cumul_y, floor))
     ln_daily_y = np.log(apply_floor(daily_y, floor))
     x = df.index[keep_idx].values
+    
+    # how many days in fit window are non-zero (use this to determine cumul/daily weights?)
+    # TODO: test this out to determine potential gradient
+    non_zero_data = np.diff(df['Death rate'], prepend=0) > 0
+    pct_non_zero = len(df.loc[max_1week_of_zeros & non_zero_data]) / len(df.loc[max_1week_of_zeros])
 
     # get deaths in last week
     last_week = df.copy()
@@ -162,7 +181,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     ln_daily_smooth_y, ln_daily_model, ln_daily_mod_df = run_smoothing_model(
         ln_daily_mod_df, n_i_knots, ln_daily_spline_options, True, pred_df
     )
-    ensemble_knots = ln_daily_model.mr_model.ensemble_knots
+    ensemble_knots = ln_daily_model.ensemble_knots
     #cumul_trans = np.diff(np.log(np.cumsum(np.exp(ln_daily_smooth_y))))
     #penult_k = ln_daily_mod_df['x'].min() + ensemble_knots[0][-2] * np.ptp(ln_daily_mod_df['x'])
     #cumul_gprior_mean = cumul_trans[x[1:] >= penult_k].mean()
@@ -219,15 +238,19 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     # make pretty (in linear cumulative space)
     noisy_draws = draw_cleanup(noisy_draws, smooth_y, x, df)
     smooth_draws = draw_cleanup(smooth_draws, smooth_y, x, df)
+    
+    # get best knots and betas
+    best_settings = find_best_settings(ln_daily_model)
 
-    return noisy_draws, smooth_draws
+    return noisy_draws, smooth_draws, best_settings
 
 
 def synthesize_time_series(location_id: int,
                            data: pd.DataFrame,
                            obs_var: str, pred_vars: List[str],
                            spline_vars: List[str],
-                           n_draws: int = 500, plot_dir: str = None) -> pd.DataFrame:
+                           spline_settings_dir: str,
+                           n_draws: int = 1000, plot_dir: str = None) -> pd.DataFrame:
     # location data
     df = data[data.location_id == location_id]
 
@@ -239,7 +262,7 @@ def synthesize_time_series(location_id: int,
         n_i_knots = 4
     else:
         n_i_knots = 3
-    noisy_draws, smooth_draws = smoother(
+    noisy_draws, smooth_draws, best_settings = smoother(
         df=df.copy(),
         obs_var=obs_var,
         pred_vars=pred_vars,
@@ -249,6 +272,10 @@ def synthesize_time_series(location_id: int,
     )
     draw_cols = [col for col in noisy_draws.columns if col.startswith('draw_')]
     df = summarize.append_summary_statistics(smooth_draws, df)
+    
+    # save knots
+    with open(f"{spline_settings_dir}/{df['location_id'][0]}.pkl", 'wb') as fwrite:
+        pickle.dump(best_settings, fwrite, -1)
 
     # plot
     if plot_dir is not None:

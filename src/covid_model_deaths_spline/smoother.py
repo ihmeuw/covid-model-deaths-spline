@@ -4,6 +4,7 @@ import multiprocessing
 from pathlib import Path
 from typing import List, Dict, Tuple
 from collections import namedtuple
+import dill as pickle
 
 import numpy as np
 import pandas as pd

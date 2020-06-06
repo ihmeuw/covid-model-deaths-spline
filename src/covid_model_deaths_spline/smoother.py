@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import tqdm
 
+from covid_model_deaths_spline import summarize
 from covid_model_deaths_spline.mr_spline import SplineFit, rescale_k
 from covid_model_deaths_spline.plotter import plotter
 
@@ -45,7 +46,7 @@ def run_smoothing_model(mod_df: pd.DataFrame, n_i_knots: int, spline_options: Di
 
 
 def process_inputs(y: np.array, col_names: List[str], 
-                   x: np.array, n_i_knots: int, subset_idx: np.array, 
+                   x: np.array, n_i_knots: int, subset_idx: np.array,
                    mono: bool, tail_gprior: np.array = None):
     # get smoothed curve (dropping NAs, inflating variance for pseudo-deaths)
     obs_data = y[subset_idx].copy()
@@ -82,10 +83,10 @@ def process_inputs(y: np.array, col_names: List[str],
             raise ValueError('`tail_gprior` must be in the format np.array([mu, sigma])')
         maxder_gprior[:,-1] = tail_gprior
         spline_options.update({'prior_spline_maxder_gaussian': maxder_gprior})
-    
+
     return mod_df, spline_options
-    
-    
+
+
 def draw_cleanup(draws: np.array, smooth_y: np.array, x: np.array, df: pd.DataFrame) -> pd.DataFrame:
     # set to linear, add up cumulative, and create dataframe
     #draws -= np.var(draws, axis=1, keepdims=True) / 2
@@ -96,9 +97,9 @@ def draw_cleanup(draws: np.array, smooth_y: np.array, x: np.array, df: pd.DataFr
 
     # store in dataframe
     draw_df = df.loc[x, ['location_id', 'Date', 'population']].reset_index(drop=True)
-    draw_df = pd.concat([draw_df, 
+    draw_df = pd.concat([draw_df,
                          pd.DataFrame(draws, columns=[f'draw_{d}' for d in range(draws.shape[1])])], axis=1)
-    
+
     return draw_df
 
 
@@ -143,7 +144,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     ln_cumul_y = np.log(apply_floor(cumul_y, floor))
     ln_daily_y = np.log(apply_floor(daily_y, floor))
     x = df.index[keep_idx].values
-    
+
     # get deaths in last week
     last_week = df.copy()
     last_week['Deaths'] = last_week['Death rate'] * last_week['population']
@@ -155,7 +156,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     pred_df = pd.DataFrame({'intercept':1, 'x': x})
     ln_daily_mod_df, ln_daily_spline_options = process_inputs(
         y=ln_daily_y, col_names=[obs_var] + pred_vars,
-        x=x, n_i_knots=n_i_knots, subset_idx=max_1week_of_zeros, 
+        x=x, n_i_knots=n_i_knots, subset_idx=max_1week_of_zeros,
         mono=False, tail_gprior=np.array([0, gprior_se])
     )
     ln_daily_smooth_y, ln_daily_model, ln_daily_mod_df = run_smoothing_model(
@@ -169,13 +170,13 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     # run cumulative, using slope after the last knot as the prior mean
     ln_cumul_mod_df, ln_cumul_spline_options = process_inputs(
         y=ln_cumul_y, col_names=[obs_var] + pred_vars,
-        x=x, n_i_knots=n_i_knots, subset_idx=max_1week_of_zeros, 
+        x=x, n_i_knots=n_i_knots, subset_idx=max_1week_of_zeros,
         mono=True, tail_gprior=np.array([0, gprior_se])  # cumul_gprior_mean
     )
     ln_cumul_smooth_y, ln_cumul_model, ln_cumul_mod_df = run_smoothing_model(
         ln_cumul_mod_df, n_i_knots, ln_cumul_spline_options, False, pred_df, ensemble_knots
     )
-    
+
     # average the two in linear daily (increasing influence of daily as we get closer to 100), then log
     smooth_y = combine_cumul_daily(ln_cumul_smooth_y, ln_daily_smooth_y, total_deaths)
     input_ln_cumul_smooth_y = pd.pivot_table(ln_cumul_mod_df, index='x', columns='data_type', values='smooth_y').values
@@ -192,7 +193,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     rstd = mad * 1.4826
     noisy_draws = np.random.normal(smooth_y, rstd, (smooth_y.size, n_draws))
     #draws = stats.t.rvs(dof, loc=smooth_y, scale=std, size=(smooth_y.size, n_draws))
-    
+
     # refit in ln(daily)
     draw_mod_dfs = [
         pd.DataFrame({
@@ -200,7 +201,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
             'intercept':1,
             'x':x,
             'observed':True
-        }) 
+        })
         for nd in noisy_draws.T
     ]
     rescaled_ensemble_knots = rescale_k(ln_daily_mod_df['x'].values, x, ensemble_knots)
@@ -214,7 +215,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     with multiprocessing.Pool(20) as p:
         smooth_draws = list(tqdm.tqdm(p.imap(_combiner, draw_mod_dfs), total=n_draws))
     smooth_draws = np.vstack(smooth_draws).T
-    
+
     # make pretty (in linear cumulative space)
     noisy_draws = draw_cleanup(noisy_draws, smooth_y, x, df)
     smooth_draws = draw_cleanup(smooth_draws, smooth_y, x, df)
@@ -243,34 +244,11 @@ def synthesize_time_series(location_id: int,
         obs_var=obs_var,
         pred_vars=pred_vars,
         n_i_knots=n_i_knots,
-        n_draws=n_draws, 
+        n_draws=n_draws,
         total_deaths=total_deaths
     )
     draw_cols = [col for col in noisy_draws.columns if col.startswith('draw_')]
-
-    # add summary stats to dataset for plotting
-    summ_df = smooth_draws.copy()
-    summ_df = summ_df.sort_values('Date')
-    summ_df['Smoothed predicted death rate'] = np.mean(summ_df[draw_cols], axis=1)
-    summ_df['Smoothed predicted death rate lower'] = np.percentile(summ_df[draw_cols], 2.5, axis=1)
-    summ_df['Smoothed predicted death rate upper'] = np.percentile(summ_df[draw_cols], 97.5, axis=1)
-    summ_df['Smoothed predicted daily death rate'] = np.nan
-    summ_df['Smoothed predicted daily death rate'][1:] = np.mean(np.diff(summ_df[draw_cols], axis=0),
-                                                                 axis=1)
-    summ_df['Smoothed predicted daily death rate lower'] = np.nan
-    summ_df['Smoothed predicted daily death rate lower'][1:] = np.percentile(np.diff(summ_df[draw_cols], axis=0),
-                                                                             2.5, axis=1)
-    summ_df['Smoothed predicted daily death rate upper'] = np.nan
-    summ_df['Smoothed predicted daily death rate upper'][1:] = np.percentile(np.diff(summ_df[draw_cols], axis=0),
-                                                                             97.5, axis=1)
-    summ_df = summ_df[['Date'] + [i for i in summ_df.columns if i.startswith('Smoothed predicted')]]
-
-    first_day = summ_df['Date'] == summ_df['Date'].min()
-    summ_df.loc[first_day, 'Smoothed predicted daily death rate'] = summ_df['Smoothed predicted death rate']
-    summ_df.loc[first_day, 'Smoothed predicted daily death rate lower'] = summ_df['Smoothed predicted death rate lower']
-    summ_df.loc[first_day, 'Smoothed predicted daily death rate upper'] = summ_df['Smoothed predicted death rate upper']
-    df = df.merge(summ_df, how='left')
-    df = df.sort_values('Date')
+    df = summarize.append_summary_statistics(smooth_draws, df)
 
     # plot
     if plot_dir is not None:

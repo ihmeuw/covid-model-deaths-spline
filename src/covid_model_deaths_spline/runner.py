@@ -7,7 +7,7 @@ from loguru import logger
 import pandas as pd
 import yaml
 
-from covid_model_deaths_spline import data, models, pdf_merger, cluster
+from covid_model_deaths_spline import data, models, pdf_merger, cluster, summarize, aggregate
 
 warnings.simplefilter('ignore')
 
@@ -95,7 +95,13 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     noisy_draws = pd.concat([r['noisy_draws'] for r in results]).reset_index(drop=True)
     smooth_draws = pd.concat([r['smooth_draws'] for r in results]).reset_index(drop=True)
 
-    #
+    agg_model_data = aggregate.compute_location_aggregates_data(model_data, hierarchy)
+    agg_draw_df = aggregate.compute_location_aggregates_draws(smooth_draws.rename(columns={'date': 'Date'}), hierarchy)
+
+    obs_var = smoother_settings['obs_var']
+    spline_vars = smoother_settings['spline_vars']
+    summarize.summarize_and_plot(agg_draw_df, agg_model_data, str(plot_dir), obs_var=obs_var, spline_vars=spline_vars)
+
     logger.debug("Synthesizing plots.")
     pdf_merger.pdf_merger(indir=plot_dir, outfile=str(output_root / 'model_results.pdf'))
 

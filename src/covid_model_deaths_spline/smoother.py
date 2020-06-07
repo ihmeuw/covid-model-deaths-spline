@@ -75,7 +75,8 @@ def process_inputs(y: np.array, col_names: List[str],
             'spline_knots_type': 'domain',
             'spline_degree': 3,
             'spline_r_linear': True,
-            'spline_l_linear': True
+            'spline_l_linear': True,
+            'prior_spline_funval_uniform': np.array([-np.inf, 0])
         }
     if mono:
         spline_options.update({'prior_spline_monotonicity': 'increasing'})
@@ -133,7 +134,7 @@ def get_mad(df: pd.DataFrame, weighted: bool) -> float:
     return mad
 
 
-def find_best_settings(mr_model):
+def find_best_settings(mr_model, spline_options):
     x = mr_model.data.df['x'].values
     knots = x.min() + mr_model.ensemble_knots * x.ptp()
     betas = [mr.beta_soln for mr in mr_model.sub_models]
@@ -141,16 +142,16 @@ def find_best_settings(mr_model):
     best_betas = np.average(betas, axis=0, weights=mr_model.weights)
     best_betas[1:] += best_betas[0]
     
-    Results = namedtuple('Results', 'knots betas')
+    Results = namedtuple('Results', 'knots betas options')
     
-    return Results(best_knots, best_betas)
+    return Results(best_knots, best_betas, spline_options)
 
 
 def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
              n_i_knots: int, n_draws: int, total_deaths: float) -> Tuple[pd.DataFrame, pd.DataFrame]:
     # extract inputs
     df = df.sort_values('Date').reset_index(drop=True)
-    floor = 0.05 / df['population'][0]
+    floor = 0.01 / df['population'][0]
     keep_idx = ~df[[obs_var] + pred_vars].isnull().all(axis=1)
     max_1week_of_zeros = (df[obs_var][::-1] == 0).cumsum()[::-1] <= 7
     cumul_y = df.loc[keep_idx, [obs_var] + pred_vars].values
@@ -225,9 +226,11 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
         for nd in noisy_draws.T
     ]
     rescaled_ensemble_knots = rescale_k(ln_daily_mod_df['x'].values, x, ensemble_knots)
+    refit_spline_options = ln_daily_spline_options.copy()
+    del refit_spline_options['prior_spline_funval_uniform']
     _combiner = functools.partial(run_smoothing_model,
                                   n_i_knots=n_i_knots,
-                                  spline_options=ln_daily_spline_options,
+                                  spline_options=refit_spline_options,
                                   pred_df=pred_df,
                                   scale_se=False,
                                   ensemble_knots=rescaled_ensemble_knots,
@@ -241,7 +244,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     smooth_draws = draw_cleanup(smooth_draws, smooth_y, x, df)
     
     # get best knots and betas
-    best_settings = find_best_settings(ln_daily_model)
+    best_settings = find_best_settings(ln_daily_model, ln_daily_spline_options)
 
     return noisy_draws, smooth_draws, best_settings
 

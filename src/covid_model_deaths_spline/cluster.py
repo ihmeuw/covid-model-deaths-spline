@@ -1,3 +1,4 @@
+from bdb import BdbQuit
 from collections import Counter
 import os
 from pathlib import Path
@@ -22,30 +23,36 @@ def run_cluster_jobs(job_type: str, output_root: Path, job_args_map: Dict[int, L
     drmaa = get_drmaa()
     jobs = {}
     with drmaa.Session() as session:
-        logger.info(f"Enqueuing {job_type} jobs...")
-        for job_id, job_args in job_args_map.items():
-            job_name = f'{job_type}_{job_id}'
-            job = do_qsub(session, job_type, job_name, output_root, job_args)
-            jobs[job_name] = (job, drmaa.JobState.UNDETERMINED)
+        try:
+            logger.info(f"Enqueuing {job_type} jobs...")
+            for job_id, job_args in job_args_map.items():
+                job_name = f'{job_type}_{job_id}'
+                job = do_qsub(session, job_type, job_name, output_root, job_args)
+                jobs[job_name] = (job, drmaa.JobState.UNDETERMINED)
 
-        logger.info('Entering monitoring loop.')
-        logger.info('-------------------------')
-        logger.info('')
+            logger.info('Entering monitoring loop.')
+            logger.info('-------------------------')
+            logger.info('')
 
-        while any([job[1] not in [drmaa.JobState.DONE, drmaa.JobState.FAILED] for job in jobs.values()]):
+            while any([job[1] not in [drmaa.JobState.DONE, drmaa.JobState.FAILED] for job in jobs.values()]):
 
-            statuses = Counter()
+                statuses = Counter()
+                for job_name, (job_id, status) in jobs.items():
+                    new_status = session.jobStatus(job_id)
+                    jobs[job_name] = (job_id, new_status)
+                    statuses[new_status] += 1
+                for status, count in statuses.items():
+                    logger.info(f'{status:<35}: {count:>4}')
+                logger.info('')
+                time.sleep(SLEEP_TIME)
+                logger.info('Checking status again')
+                logger.info('---------------------')
+                logger.info('')
+        except (KeyboardInterrupt, BdbQuit):
+            logger.info('User termination of the master process. Killing all running jobs.')
             for job_name, (job_id, status) in jobs.items():
-                new_status = session.jobStatus(job_id)
-                jobs[job_name] = (job_id, new_status)
-                statuses[new_status] += 1
-            for status, count in statuses.items():
-                logger.info(f'{status:<35}: {count:>4}')
-            logger.info('')
-            time.sleep(SLEEP_TIME)
-            logger.info('Checking status again')
-            logger.info('---------------------')
-            logger.info('')
+                if status not in [drmaa.JobState.DONE, drmaa.JobState.FAILED]:
+                    session.control(job_id, drmaa.JobControlAction.TERMINATE)
 
     logger.info('**Done**')
 

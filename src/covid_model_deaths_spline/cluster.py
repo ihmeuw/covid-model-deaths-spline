@@ -48,11 +48,12 @@ def run_cluster_jobs(job_type: str, output_root: Path, job_args_map: Dict[int, L
                 logger.info('Checking status again')
                 logger.info('---------------------')
                 logger.info('')
-        except (KeyboardInterrupt, BdbQuit):
+        except (KeyboardInterrupt, BdbQuit) as e:
             logger.info('User termination of the master process. Killing all running jobs.')
             for job_name, (job_id, status) in jobs.items():
                 if status not in [drmaa.JobState.DONE, drmaa.JobState.FAILED]:
                     session.control(job_id, drmaa.JobControlAction.TERMINATE)
+            raise e
 
     logger.info('**Done**')
 

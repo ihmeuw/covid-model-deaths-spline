@@ -116,7 +116,7 @@ def get_limits(y: np.array) -> np.array:
 
 
 def combine_cumul_daily(from_cumul: np.array, from_daily: np.array, 
-                        total_deaths: float) -> np.array:
+                        total_deaths: float, ceiling: float = 100.) -> np.array:
     # convert cumulative to daily (replace first day with first estimate)
     from_cumul = np.exp(from_cumul.copy())
     from_cumul[1:] = np.diff(from_cumul, axis=0)
@@ -126,7 +126,7 @@ def combine_cumul_daily(from_cumul: np.array, from_daily: np.array,
     from_daily = np.exp(from_daily.copy())
     
     # weighted combination
-    d_w = min(total_deaths / 100., 1.)
+    d_w = min(total_deaths / ceiling, 1.)
     c_w = 1. - d_w
     smooth_y = from_daily * d_w + from_cumul * c_w
     
@@ -263,6 +263,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     smooth_draws = noisy_draws.copy()
     
     # get best knots and betas
+    del ln_daily_spline_options['prior_spline_funval_uniform']
     best_settings = find_best_settings(ln_daily_model, ln_daily_spline_options)
 
     return noisy_draws, smooth_draws, best_settings
@@ -273,7 +274,7 @@ def synthesize_time_series(location_id: int,
                            obs_var: str, pred_vars: List[str],
                            spline_vars: List[str],
                            spline_settings_dir: str,
-                           n_draws: int = 1000, plot_dir: str = None) -> pd.DataFrame:
+                           n_draws: int, plot_dir: str = None) -> pd.DataFrame:
     # location data
     df = data[data.location_id == location_id]
 

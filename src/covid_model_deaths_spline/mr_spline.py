@@ -98,7 +98,7 @@ class SplineFit:
         self.coef_dicts = None
         
     def get_ensemble_knots(self, n_i_knots: int, spline_data: np.array, observed: np.array, 
-                           spline_options: Dict, N: int = 20) -> List[np.array]:
+                           spline_options: Dict, N: int = 50) -> List[np.array]:
         # sample
         n_intervals = n_i_knots + 1
         k_start = 0.

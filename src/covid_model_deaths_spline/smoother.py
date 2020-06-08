@@ -49,7 +49,7 @@ def run_smoothing_model(mod_df: pd.DataFrame, n_i_knots: int, spline_options: Di
 
 def process_inputs(y: np.array, col_names: List[str], 
                    x: np.array, n_i_knots: int, subset_idx: np.array,
-                   mono: bool, tail_gprior: np.array = None):
+                   mono: bool, limits: np.array, tail_gprior: np.array = None):
     # get smoothed curve (dropping NAs, inflating variance for pseudo-deaths)
     obs_data = y[subset_idx].copy()
     obs_data[:,0] = 1
@@ -71,13 +71,12 @@ def process_inputs(y: np.array, col_names: List[str],
         'observed':obs_data
     })
     mod_df['observed'] = mod_df['observed'].astype(bool)
-    funval_lim = np.abs(y_fit.mean())
     spline_options={
             'spline_knots_type': 'domain',
             'spline_degree': 3,
             'spline_r_linear': True,
             'spline_l_linear': True,
-            'prior_spline_funval_uniform': np.array([-funval_lim, funval_lim])
+            'prior_spline_funval_uniform': limits
         }
     if mono:
         spline_options.update({'prior_spline_monotonicity': 'increasing'})
@@ -107,12 +106,20 @@ def draw_cleanup(draws: np.array, smooth_y: np.array, x: np.array, df: pd.DataFr
     return draw_df
 
 
+def get_limits(y: np.array) -> np.array:
+    y = y.copy()
+    y = y[~np.isnan(y)]
+    funval_lim = np.abs(y.mean())
+    lower = np.abs(funval_lim - np.abs(y.min()))
+    
+    return np.array([-lower * 2, funval_lim])
+
+
 def combine_cumul_daily(ln_cumul_smooth_y: np.array, ln_daily_smooth_y: np.array, 
                         total_deaths: float) -> np.array:
     # convert cumulative to daily (replace first day with first estimate)
     from_cumul = np.exp(ln_cumul_smooth_y)
     from_cumul[1:] = np.diff(from_cumul, axis=0)
-    from_cumul[0] = from_cumul[1]
     
     # daily in linear
     from_daily = np.exp(ln_daily_smooth_y)
@@ -182,10 +189,11 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
 
     # prepare data and run daily
     pred_df = pd.DataFrame({'intercept':1, 'x': x})
+    ln_daily_limits = get_limits(ln_daily_y[max_1week_of_zeros])
     ln_daily_mod_df, ln_daily_spline_options = process_inputs(
         y=ln_daily_y, col_names=[obs_var] + pred_vars,
         x=x, n_i_knots=n_i_knots, subset_idx=max_1week_of_zeros,
-        mono=False, tail_gprior=np.array([0, gprior_se])
+        mono=False, limits=ln_daily_limits, tail_gprior=np.array([0, gprior_se])
     )
     ln_daily_smooth_y, ln_daily_model, ln_daily_mod_df = run_smoothing_model(
         ln_daily_mod_df, n_i_knots, ln_daily_spline_options, True, pred_df
@@ -196,10 +204,11 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     #cumul_gprior_mean = cumul_trans[x[1:] >= penult_k].mean()
     
     # run cumulative, using slope after the last knot as the prior mean
+    ln_cumul_limits = get_limits(ln_cumul_y[max_1week_of_zeros])
     ln_cumul_mod_df, ln_cumul_spline_options = process_inputs(
         y=ln_cumul_y, col_names=[obs_var] + pred_vars,
         x=x, n_i_knots=n_i_knots, subset_idx=max_1week_of_zeros,
-        mono=True, tail_gprior=np.array([0, gprior_se])  # cumul_gprior_mean
+        mono=True, limits=ln_cumul_limits, tail_gprior=np.array([0, gprior_se])  # cumul_gprior_mean
     )
     ln_cumul_smooth_y, ln_cumul_model, ln_cumul_mod_df = run_smoothing_model(
         ln_cumul_mod_df, n_i_knots, ln_cumul_spline_options, False, pred_df, ensemble_knots
@@ -233,8 +242,9 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
         for nd in noisy_draws.T
     ]
     rescaled_ensemble_knots = rescale_k(ln_daily_mod_df['x'].values, x, ensemble_knots)
+    refit_limits = get_limits(noisy_draws)
     refit_spline_options = ln_daily_spline_options.copy()
-    del refit_spline_options['prior_spline_funval_uniform']
+    refit_spline_options['prior_spline_funval_uniform'] = refit_limits
     _combiner = functools.partial(run_smoothing_model,
                                   n_i_knots=n_i_knots,
                                   spline_options=refit_spline_options,

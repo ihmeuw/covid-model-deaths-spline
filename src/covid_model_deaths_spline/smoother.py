@@ -71,12 +71,13 @@ def process_inputs(y: np.array, col_names: List[str],
         'observed':obs_data
     })
     mod_df['observed'] = mod_df['observed'].astype(bool)
+    funval_lim = np.abs(y_fit.mean())
     spline_options={
             'spline_knots_type': 'domain',
             'spline_degree': 3,
             'spline_r_linear': True,
             'spline_l_linear': True,
-            'prior_spline_funval_uniform': np.array([-np.inf, 0])
+            'prior_spline_funval_uniform': np.array([-funval_lim, funval_lim])
         }
     if mono:
         spline_options.update({'prior_spline_monotonicity': 'increasing'})
@@ -108,9 +109,15 @@ def draw_cleanup(draws: np.array, smooth_y: np.array, x: np.array, df: pd.DataFr
 
 def combine_cumul_daily(ln_cumul_smooth_y: np.array, ln_daily_smooth_y: np.array, 
                         total_deaths: float) -> np.array:
+    # convert cumulative to daily (replace first day with first estimate)
     from_cumul = np.exp(ln_cumul_smooth_y)
     from_cumul[1:] = np.diff(from_cumul, axis=0)
+    from_cumul[0] = from_cumul[1]
+    
+    # daily in linear
     from_daily = np.exp(ln_daily_smooth_y)
+    
+    # weighted combination
     d_w = min(total_deaths / 100., 1.)
     c_w = 1. - d_w
     smooth_y = from_daily * d_w + from_cumul * c_w

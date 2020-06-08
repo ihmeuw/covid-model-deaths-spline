@@ -150,15 +150,16 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame, plot_
     draw_df[draw_cols] = np.log(draw_df[draw_cols])
     df = df.copy()
     df['Death rate'][1:] = np.diff(df['Death rate'])
-    df.loc[df['Death rate'] <= 0, 'Death rate'] = 0.01 / df['population']
+    floor = 0.01 / df['population'].values[0]
+    df.loc[df['Death rate'] < floor, 'Death rate'] = floor
     #plt.subplot(int(f'{n_rows}{1}{n_rows}'))
     ax_draws = fig.add_subplot(gs[2:, 0:])
     ax_draws.plot(draw_df['Date'],
              draw_df[draw_cols],
-             color='firebrick', alpha=0.05)
+             color='firebrick', alpha=0.025)
     ax_draws.plot(draw_df['Date'],
              draw_df[draw_cols].mean(axis=1),
-             color='firebrick', linestyle='--', alpha=0.75, linewidth=3)
+             color='firebrick', linestyle='--', linewidth=3)
     ax_draws.set_ylabel('ln(daily death rate)', fontsize=14)
     ax_draws.set_xlabel('Date', fontsize=14)
     ax_draws.plot(df['Date'],

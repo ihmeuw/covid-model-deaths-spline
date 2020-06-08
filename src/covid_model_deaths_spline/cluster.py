@@ -11,9 +11,9 @@ from loguru import logger
 
 PROJECT = 'proj_dq'
 QUEUE = 'd.q'
-F_MEM = '8.0G'
-F_THREAD = '20'
-OMP_NUM_THREADS = '20'
+F_MEM = '5.0G'
+F_THREAD = '10'
+OMP_NUM_THREADS = '10'
 H_RUNTIME = '00:30:00'
 SLEEP_TIME = 10
 

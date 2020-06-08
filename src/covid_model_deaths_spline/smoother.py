@@ -110,19 +110,20 @@ def get_limits(y: np.array) -> np.array:
     y = y.copy()
     y = y[~np.isnan(y)]
     funval_lim = np.abs(y.mean())
-    lower = np.abs(funval_lim - np.abs(y.min()))
+    lower = -np.abs(funval_lim - np.abs(y.min()))
     
-    return np.array([-lower * 2, funval_lim])
+    return np.array([lower * 2, funval_lim])
 
 
-def combine_cumul_daily(ln_cumul_smooth_y: np.array, ln_daily_smooth_y: np.array, 
+def combine_cumul_daily(from_cumul: np.array, from_daily: np.array, 
                         total_deaths: float) -> np.array:
     # convert cumulative to daily (replace first day with first estimate)
-    from_cumul = np.exp(ln_cumul_smooth_y)
+    from_cumul = np.exp(from_cumul.copy())
     from_cumul[1:] = np.diff(from_cumul, axis=0)
+    from_cumul = apply_floor(from_cumul, min(from_cumul[from_cumul > 0]))
     
     # daily in linear
-    from_daily = np.exp(ln_daily_smooth_y)
+    from_daily = np.exp(from_daily.copy())
     
     # weighted combination
     d_w = min(total_deaths / 100., 1.)
@@ -133,7 +134,7 @@ def combine_cumul_daily(ln_cumul_smooth_y: np.array, ln_daily_smooth_y: np.array
 
 
 def get_mad(df: pd.DataFrame, weighted: bool) -> float:
-    residuals = (df['y'] - df['smooth_y_combined']).values
+    residuals = (df['y'] - df['smooth_y_insample']).values
     abs_residuals = np.abs(residuals)
     if weighted:
         weights = (1 / df['obs_se']**2).values
@@ -199,9 +200,9 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
         ln_daily_mod_df, n_i_knots, ln_daily_spline_options, True, pred_df
     )
     ensemble_knots = ln_daily_model.ensemble_knots
-    #cumul_trans = np.diff(np.log(np.cumsum(np.exp(ln_daily_smooth_y))))
-    #penult_k = ln_daily_mod_df['x'].min() + ensemble_knots[0][-2] * np.ptp(ln_daily_mod_df['x'])
-    #cumul_gprior_mean = cumul_trans[x[1:] >= penult_k].mean()
+    # cumul_trans = np.diff(np.log(np.cumsum(np.exp(ln_daily_smooth_y))))
+    # penult_k = ln_daily_mod_df['x'].min() + ensemble_knots[0][-2] * np.ptp(ln_daily_mod_df['x'])
+    # cumul_gprior_mean = cumul_trans[x[1:] >= penult_k].mean()
     
     # run cumulative, using slope after the last knot as the prior mean
     ln_cumul_limits = get_limits(ln_cumul_y[max_1week_of_zeros])
@@ -216,13 +217,13 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
 
     # average the two in linear daily (increasing influence of daily as we get closer to 100), then log
     smooth_y = combine_cumul_daily(ln_cumul_smooth_y, ln_daily_smooth_y, total_deaths)
-    input_ln_cumul_smooth_y = pd.pivot_table(ln_cumul_mod_df, index='x', columns='data_type', values='smooth_y').values
-    input_ln_daily_smooth_y = pd.pivot_table(ln_daily_mod_df, index='x', columns='data_type', values='smooth_y').values
-    input_ln_daily_smooth_y = combine_cumul_daily(
-        input_ln_cumul_smooth_y, input_ln_daily_smooth_y, total_deaths
+    smooth_y_insample = combine_cumul_daily(
+        pd.pivot_table(ln_cumul_mod_df, index='x', columns='data_type', values='smooth_y').values, 
+        pd.pivot_table(ln_daily_mod_df, index='x', columns='data_type', values='smooth_y').values, 
+        total_deaths
     )
-    input_ln_daily_smooth_y = input_ln_daily_smooth_y.flatten()
-    ln_daily_mod_df['smooth_y_combined'] = input_ln_daily_smooth_y[~np.isnan(input_ln_daily_smooth_y)]
+    smooth_y_insample = smooth_y_insample.flatten()
+    ln_daily_mod_df['smooth_y_insample'] = smooth_y_insample[~np.isnan(smooth_y_insample)]
 
     # get uncertainty in ln(daily)
     smooth_y = np.array([smooth_y]).T
@@ -231,34 +232,35 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     noisy_draws = np.random.normal(smooth_y, rstd, (smooth_y.size, n_draws))
     #draws = stats.t.rvs(dof, loc=smooth_y, scale=std, size=(smooth_y.size, n_draws))
 
-    # refit in ln(daily)
-    draw_mod_dfs = [
-        pd.DataFrame({
-            'y':nd,
-            'intercept':1,
-            'x':x,
-            'observed':True
-        })
-        for nd in noisy_draws.T
-    ]
-    rescaled_ensemble_knots = rescale_k(ln_daily_mod_df['x'].values, x, ensemble_knots)
-    refit_limits = get_limits(noisy_draws)
-    refit_spline_options = ln_daily_spline_options.copy()
-    refit_spline_options['prior_spline_funval_uniform'] = refit_limits
-    _combiner = functools.partial(run_smoothing_model,
-                                  n_i_knots=n_i_knots,
-                                  spline_options=refit_spline_options,
-                                  pred_df=pred_df,
-                                  scale_se=False,
-                                  ensemble_knots=rescaled_ensemble_knots,
-                                  results_only=True)
-    with multiprocessing.Pool(20) as p:
-        smooth_draws = list(tqdm.tqdm(p.imap(_combiner, draw_mod_dfs), total=n_draws))
-    smooth_draws = np.vstack(smooth_draws).T
+    # # refit in ln(daily)
+    # draw_mod_dfs = [
+    #     pd.DataFrame({
+    #         'y':nd,
+    #         'intercept':1,
+    #         'x':x,
+    #         'observed':True
+    #     })
+    #     for nd in noisy_draws.T
+    # ]
+    # rescaled_ensemble_knots = rescale_k(ln_daily_mod_df['x'].values, x, ensemble_knots)
+    # refit_limits = get_limits(noisy_draws)
+    # refit_spline_options = ln_daily_spline_options.copy()
+    # refit_spline_options['prior_spline_funval_uniform'] = refit_limits
+    # _combiner = functools.partial(run_smoothing_model,
+    #                               n_i_knots=n_i_knots,
+    #                               spline_options=refit_spline_options,
+    #                               pred_df=pred_df,
+    #                               scale_se=False,
+    #                               ensemble_knots=rescaled_ensemble_knots,
+    #                               results_only=True)
+    # with multiprocessing.Pool(20) as p:
+    #     smooth_draws = list(tqdm.tqdm(p.imap(_combiner, draw_mod_dfs), total=n_draws))
+    # smooth_draws = np.vstack(smooth_draws).T
 
     # make pretty (in linear cumulative space)
     noisy_draws = draw_cleanup(noisy_draws, smooth_y, x, df)
-    smooth_draws = draw_cleanup(smooth_draws, smooth_y, x, df)
+    #smooth_draws = draw_cleanup(smooth_draws, smooth_y, x, df)
+    smooth_draws = noisy_draws.copy()
     
     # get best knots and betas
     best_settings = find_best_settings(ln_daily_model, ln_daily_spline_options)
@@ -271,7 +273,7 @@ def synthesize_time_series(location_id: int,
                            obs_var: str, pred_vars: List[str],
                            spline_vars: List[str],
                            spline_settings_dir: str,
-                           n_draws: int = 1000, plot_dir: str = None) -> pd.DataFrame:
+                           n_draws: int = 100, plot_dir: str = None) -> pd.DataFrame:
     # location data
     df = data[data.location_id == location_id]
 

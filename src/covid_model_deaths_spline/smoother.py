@@ -140,7 +140,8 @@ def get_mad(df: pd.DataFrame, weighted: bool) -> float:
     residuals = (df['y'] - df['smooth_y_insample']).values
     abs_residuals = np.abs(residuals)
     if weighted:
-        weights = (1 / df['obs_se']**2).values
+        #weights = (1 / df['obs_se']**2).values
+        weights = (1 / (1 / np.exp(df['y']))**2).values
         weights /= weights.sum()
         weights = weights[np.argsort(abs_residuals)]
         abs_residuals = np.sort(abs_residuals)
@@ -230,9 +231,9 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     ln_daily_mod_df['smooth_y_insample'] = smooth_y_insample[~np.isnan(smooth_y_insample)]
 
     # get uncertainty in ln(daily)
-    smooth_y = np.array([smooth_y]).T
     mad = get_mad(ln_daily_mod_df, weighted=True)
     rstd = mad * 1.4826
+    smooth_y = np.array([smooth_y]).T
     noisy_draws = np.random.normal(smooth_y, rstd, (smooth_y.size, n_draws))
 
     # refit in ln(daily)
@@ -246,7 +247,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
         for nd in noisy_draws.T
     ]
     rescaled_ensemble_knots = rescale_k(ln_daily_mod_df['x'].values, x, ensemble_knots)
-    # refit_limits = get_limits(noisy_draws)
+    #refit_limits = get_limits(noisy_draws)
     del ln_daily_spline_options['prior_spline_funval_uniform']
     _combiner = functools.partial(run_smoothing_model,
                                   n_i_knots=n_i_knots,

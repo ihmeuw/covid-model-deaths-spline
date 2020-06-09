@@ -24,27 +24,27 @@ def apply_floor(vals: np.array, floor_val: float) -> np.array:
 def run_smoothing_model(mod_df: pd.DataFrame, n_i_knots: int, spline_options: Dict, scale_se: bool,
                         pred_df: pd.DataFrame, ensemble_knots: np.array = None, 
                         results_only: bool = False) -> np.array:
-        mr_model = SplineFit(
-            data=mod_df,
-            dep_var='y',
-            spline_var='x',
-            indep_vars=['intercept'],
-            n_i_knots=n_i_knots,
-            spline_options=spline_options,
-            ensemble_knots=ensemble_knots,
-            scale_se=scale_se,
-            observed_var='observed',
-            pseudo_se_multiplier=1.25
-        )
-        mr_model.fit_model()
-        smooth_y = mr_model.predict(pred_df)
-        mod_df = mr_model.data
-        mod_df['smooth_y'] = mr_model.predict(mod_df)
-        
-        if results_only:
-            return smooth_y
-        else:
-            return smooth_y, mr_model.mr_model, mod_df
+    mr_model = SplineFit(
+        data=mod_df,
+        dep_var='y',
+        spline_var='x',
+        indep_vars=['intercept'],
+        n_i_knots=n_i_knots,
+        spline_options=spline_options,
+        ensemble_knots=ensemble_knots,
+        scale_se=scale_se,
+        observed_var='observed',
+        pseudo_se_multiplier=1.25
+    )
+    mr_model.fit_model()
+    smooth_y = mr_model.predict(pred_df)
+    mod_df = mr_model.data
+    mod_df['smooth_y'] = mr_model.predict(mod_df)
+
+    if results_only:
+        return smooth_y
+    else:
+        return smooth_y, mr_model.mr_model, mod_df
 
 
 def process_inputs(y: np.array, col_names: List[str], 
@@ -71,12 +71,15 @@ def process_inputs(y: np.array, col_names: List[str],
         'observed':obs_data
     })
     mod_df['observed'] = mod_df['observed'].astype(bool)
+    beta_prior = np.array([[-np.inf, np.inf]] * (n_i_knots + 1))
+    beta_prior[0] = np.array([0, np.inf]) # no intercept, so actually first beta
     spline_options={
             'spline_knots_type': 'domain',
             'spline_degree': 3,
             'spline_r_linear': True,
             'spline_l_linear': True,
-            'prior_spline_funval_uniform': limits
+            'prior_spline_funval_uniform': limits,
+            'prior_beta_uniform': beta_prior.T
         }
     if mono:
         spline_options.update({'prior_spline_monotonicity': 'increasing'})
@@ -92,9 +95,9 @@ def process_inputs(y: np.array, col_names: List[str],
 
 def draw_cleanup(draws: np.array, smooth_y: np.array, x: np.array, df: pd.DataFrame) -> pd.DataFrame:
     # set to linear, add up cumulative, and create dataframe
-    #draws -= np.var(draws, axis=1, keepdims=True) / 2
+    draws -= np.var(draws, axis=1, keepdims=True) / 2
     draws = np.exp(draws)
-    draws *= np.exp(smooth_y) / draws.mean(axis=1, keepdims=True)
+    #draws *= np.exp(smooth_y) / draws.mean(axis=1, keepdims=True)
     draws[draws * df['population'].values[0] < 1e-10] = 1e-10 / df['population'].values[0]
     draws = draws.cumsum(axis=0)
 
@@ -163,10 +166,11 @@ def find_best_settings(mr_model, spline_options):
 
 
 def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
-             n_i_knots: int, n_draws: int, total_deaths: float) -> Tuple[pd.DataFrame, pd.DataFrame]:
+             n_i_knots: int, n_draws: int, total_deaths: float,
+             floor_deaths: float = 0.01) -> Tuple[pd.DataFrame, pd.DataFrame]:
     # extract inputs
     df = df.sort_values('Date').reset_index(drop=True)
-    floor = 0.01 / df['population'][0]
+    floor = floor_deaths / df['population'][0]
     keep_idx = ~df[[obs_var] + pred_vars].isnull().all(axis=1)
     max_1week_of_zeros = (df[obs_var][::-1] == 0).cumsum()[::-1] <= 7
     cumul_y = df.loc[keep_idx, [obs_var] + pred_vars].values
@@ -230,40 +234,36 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     mad = get_mad(ln_daily_mod_df, weighted=True)
     rstd = mad * 1.4826
     noisy_draws = np.random.normal(smooth_y, rstd, (smooth_y.size, n_draws))
-    #draws = stats.t.rvs(dof, loc=smooth_y, scale=std, size=(smooth_y.size, n_draws))
 
-    # # refit in ln(daily)
-    # draw_mod_dfs = [
-    #     pd.DataFrame({
-    #         'y':nd,
-    #         'intercept':1,
-    #         'x':x,
-    #         'observed':True
-    #     })
-    #     for nd in noisy_draws.T
-    # ]
-    # rescaled_ensemble_knots = rescale_k(ln_daily_mod_df['x'].values, x, ensemble_knots)
+    # refit in ln(daily)
+    draw_mod_dfs = [
+        pd.DataFrame({
+            'y':nd,
+            'intercept':1,
+            'x':x,
+            'observed':True
+        })
+        for nd in noisy_draws.T
+    ]
+    rescaled_ensemble_knots = rescale_k(ln_daily_mod_df['x'].values, x, ensemble_knots)
     # refit_limits = get_limits(noisy_draws)
-    # refit_spline_options = ln_daily_spline_options.copy()
-    # refit_spline_options['prior_spline_funval_uniform'] = refit_limits
-    # _combiner = functools.partial(run_smoothing_model,
-    #                               n_i_knots=n_i_knots,
-    #                               spline_options=refit_spline_options,
-    #                               pred_df=pred_df,
-    #                               scale_se=False,
-    #                               ensemble_knots=rescaled_ensemble_knots,
-    #                               results_only=True)
-    # with multiprocessing.Pool(20) as p:
-    #     smooth_draws = list(tqdm.tqdm(p.imap(_combiner, draw_mod_dfs), total=n_draws))
-    # smooth_draws = np.vstack(smooth_draws).T
+    del ln_daily_spline_options['prior_spline_funval_uniform']
+    _combiner = functools.partial(run_smoothing_model,
+                                  n_i_knots=n_i_knots,
+                                  spline_options=ln_daily_spline_options,
+                                  pred_df=pred_df,
+                                  scale_se=False,
+                                  ensemble_knots=rescaled_ensemble_knots,
+                                  results_only=True)
+    with multiprocessing.Pool(20) as p:
+        smooth_draws = list(tqdm.tqdm(p.imap(_combiner, draw_mod_dfs), total=n_draws))
+    smooth_draws = np.vstack(smooth_draws).T
 
     # make pretty (in linear cumulative space)
     noisy_draws = draw_cleanup(noisy_draws, smooth_y, x, df)
-    #smooth_draws = draw_cleanup(smooth_draws, smooth_y, x, df)
-    smooth_draws = noisy_draws.copy()
+    smooth_draws = draw_cleanup(smooth_draws, smooth_y, x, df)
     
     # get best knots and betas
-    del ln_daily_spline_options['prior_spline_funval_uniform']
     best_settings = find_best_settings(ln_daily_model, ln_daily_spline_options)
 
     return noisy_draws, smooth_draws, best_settings

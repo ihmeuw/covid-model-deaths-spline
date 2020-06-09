@@ -12,13 +12,6 @@ def evil_doings(case_data: pd.DataFrame,
                 death_data: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, Dict[str, str]]:
     # Record our sins
     manipulation_metadata = {}
-
-    # Peru's reporting lag is making the model results wonky.
-    peru = case_data['location_id'] == 123
-    bad_days = case_data['True date'] >= pd.Timestamp('2020-05-29')
-    case_data = case_data[~(peru & bad_days)].reset_index(drop=True)
-    manipulation_metadata['peru'] = 'drop data for reporting lag and spike.'
-
     return case_data, hosp_data, death_data, manipulation_metadata
 
 

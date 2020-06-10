@@ -24,7 +24,6 @@ def cfr_model(location_id: int,
               model_dir: str, 
               model_type: str, **_) -> pd.DataFrame:
     # set up model
-    np.random.seed(location_id)
     df = data[data.location_id == location_id]
     deaths_threshold = cfr_death_threshold(df)
 

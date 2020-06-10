@@ -15,6 +15,10 @@ from covid_model_deaths_spline import cfr_model, smoother
 
 
 def run_models(location_id: int, data_path: str, settings_path: str):
+    # set seed
+    np.random.seed(location_id)
+    
+    # load inputs
     with Path(data_path).open('rb') as in_file:
         model_data = pickle.load(in_file)
 

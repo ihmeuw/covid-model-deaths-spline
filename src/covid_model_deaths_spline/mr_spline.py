@@ -45,6 +45,7 @@ class SplineFit:
             col_covs=indep_vars + [spline_var],
             col_study_id='study_id'
         )
+        self.data = data
         
         # cov models
         cov_models = []
@@ -105,14 +106,14 @@ class SplineFit:
         if n_i_knots >= 3:
             if np.diff([spline_data.min(), np.quantile(spline_data[observed], 0.05)]) > 1e-10:
                 n_intervals -= 1
-                k_start = 0.1
+                k_start = 0.15
             #
             if np.diff([np.quantile(spline_data[observed], 0.95), spline_data.max()]) > 1e-10:
                 n_intervals -= 1
-                k_end = 0.9
+                k_end = 0.85
         ensemble_knots = utils.sample_knots(n_intervals, 
                                             b=np.array([[k_start, k_end]]*(n_intervals-1)),
-                                            d=np.array([[0.05, 1]]*n_intervals),
+                                            d=np.array([[0.1, 1]]*n_intervals),
                                             N=N)
         if k_start > 0.:
             ensemble_knots = np.insert(ensemble_knots, 1, 0.05, 1)

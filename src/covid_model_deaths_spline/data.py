@@ -43,7 +43,7 @@ def load_most_detailed_locations(inputs_root: Path) -> pd.DataFrame:
 
 def load_full_data(inputs_root: Path) -> pd.DataFrame:
     """Gets all death, case, and population data."""
-    full_data_path = inputs_root / 'full_data.csv'
+    full_data_path = inputs_root / 'use_at_your_own_risk' / 'full_data_extra_hospital.csv'
     data = pd.read_csv(full_data_path)
     data['Date'] = pd.to_datetime(data['Date'])
     data['location_id'] = data['location_id'].astype(int)

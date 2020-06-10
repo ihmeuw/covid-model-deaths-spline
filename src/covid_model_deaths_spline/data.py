@@ -12,17 +12,7 @@ def evil_doings(case_data: pd.DataFrame,
                 death_data: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, Dict[str, str]]:
     # Record our sins
     manipulation_metadata = {}
-<<<<<<< Updated upstream
-    # even out days in Tennessee with spike in reporting
-    case_data = case_data.copy()
-    tn_df = case_data.loc[case_data['location_id'] == 565]
-    bad_days = ((tn_df['True date'] >= pd.to_datetime('2020-05-31'))
-                & (tn_df['True date'] <= pd.to_datetime('2020-06-02')))
-    tn_df.loc[bad_days, 'Confirmed case rate'] = np.nan
-    new_tn = tn_df['Confirmed case rate'].interpolate().values
-    case_data.loc[case_data['location_id'] == 565, 'Confirmed case rate'] = new_tn
-    manipulation_metadata['tennessee'] = 'even out cases spike between 5/31 and 6/2'
-=======
+
     chile_cases = case_data.location_id == 98
     bad_date = case_data['True date'] == pd.Timestamp('2020-06-08')
     case_data = case_data[~(chile_cases & bad_date)]
@@ -37,7 +27,6 @@ def evil_doings(case_data: pd.DataFrame,
     
     manipulation_metadata['chile'] = 'Spike today with unknown cause'
 
->>>>>>> Stashed changes
     return case_data, hosp_data, death_data, manipulation_metadata
 
 

@@ -63,4 +63,5 @@ def summarize_and_plot(agg_df: pd.DataFrame, model_data: pd.DataFrame, plot_dir:
     summ_df = summ_df[summ_df['Date'] <= agg_df['Date'].max()]
     smoother.plotter(summ_df,
                      [obs_var] + list(compress(spline_vars, (~summ_df[spline_vars].isnull().all(axis=0)).to_list())),
+                     agg_df,
                      f"{plot_dir}/{summ_df['location_id'][0]}.pdf")

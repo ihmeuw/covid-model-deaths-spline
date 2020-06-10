@@ -140,7 +140,6 @@ def get_mad(df: pd.DataFrame, weighted: bool) -> float:
     residuals = (df['y'] - df['smooth_y_insample']).values
     abs_residuals = np.abs(residuals)
     if weighted:
-        #weights = (1 / df['obs_se']**2).values
         weights = (1 / (1 / np.exp(df['y']))**2).values
         weights /= weights.sum()
         weights = weights[np.argsort(abs_residuals)]
@@ -205,16 +204,13 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
         ln_daily_mod_df, n_i_knots, ln_daily_spline_options, True, pred_df
     )
     ensemble_knots = ln_daily_model.ensemble_knots
-    # cumul_trans = np.diff(np.log(np.cumsum(np.exp(ln_daily_smooth_y))))
-    # penult_k = ln_daily_mod_df['x'].min() + ensemble_knots[0][-2] * np.ptp(ln_daily_mod_df['x'])
-    # cumul_gprior_mean = cumul_trans[x[1:] >= penult_k].mean()
     
     # run cumulative, using slope after the last knot as the prior mean
     ln_cumul_limits = get_limits(ln_cumul_y[max_1week_of_zeros])
     ln_cumul_mod_df, ln_cumul_spline_options = process_inputs(
         y=ln_cumul_y, col_names=[obs_var] + pred_vars,
         x=x, n_i_knots=n_i_knots, subset_idx=max_1week_of_zeros,
-        mono=True, limits=ln_cumul_limits, tail_gprior=np.array([0, gprior_se])  # cumul_gprior_mean
+        mono=True, limits=ln_cumul_limits, tail_gprior=np.array([0, gprior_se])
     )
     ln_cumul_smooth_y, ln_cumul_model, ln_cumul_mod_df = run_smoothing_model(
         ln_cumul_mod_df, n_i_knots, ln_cumul_spline_options, False, pred_df, ensemble_knots

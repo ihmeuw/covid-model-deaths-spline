@@ -24,6 +24,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
 
     logger.debug("Loading and cleaning data.")
     hierarchy = data.load_most_detailed_locations(input_root)
+    hierarchy
     full_data = data.load_full_data(input_root)
     case_data = data.get_shifted_data(full_data, 'Confirmed', 'Confirmed case rate')
     hosp_data = data.get_shifted_data(full_data, 'Hospitalizations', 'Hospitalization rate')

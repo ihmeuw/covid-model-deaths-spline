@@ -12,21 +12,6 @@ def evil_doings(case_data: pd.DataFrame,
                 death_data: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, Dict[str, str]]:
     # Record our sins
     manipulation_metadata = {}
-
-    chile_cases = case_data.location_id == 98
-    bad_date = case_data['True date'] == pd.Timestamp('2020-06-08')
-    case_data = case_data[~(chile_cases & bad_date)]
-
-    chile_deaths = death_data.location_id == 98
-    bad_date = death_data['Date'] == pd.Timestamp('2020-06-08')
-    death_data = death_data[~(chile_deaths & bad_date)]
-
-    chile_hosp = hosp_data.location_id == 98
-    bad_date = hosp_data['True date'] == pd.Timestamp('2020-06-08')
-    hosp_data = hosp_data[~(chile_hosp & bad_date)]
-    
-    manipulation_metadata['chile'] = 'Spike today with unknown cause'
-
     return case_data, hosp_data, death_data, manipulation_metadata
 
 
@@ -43,7 +28,7 @@ def load_most_detailed_locations(inputs_root: Path) -> pd.DataFrame:
 
 def load_full_data(inputs_root: Path) -> pd.DataFrame:
     """Gets all death, case, and population data."""
-    full_data_path = inputs_root / 'full_data.csv'
+    full_data_path = inputs_root / 'use_at_your_own_risk' / 'full_data_extra_hospital.csv'
     data = pd.read_csv(full_data_path)
     data['Date'] = pd.to_datetime(data['Date'])
     data['location_id'] = data['location_id'].astype(int)

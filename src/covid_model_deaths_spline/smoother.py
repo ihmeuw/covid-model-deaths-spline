@@ -278,7 +278,7 @@ def synthesize_time_series(location_id: int,
     # spline on deaths time series
     total_deaths = (df['Death rate'] * df['population']).max()
     draws_pending = True
-    n_i_knots = 5
+    n_i_knots = 6
     while draws_pending:
         try:
             noisy_draws, smooth_draws, best_settings = smoother(

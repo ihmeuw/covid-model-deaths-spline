@@ -61,7 +61,10 @@ def summarize_and_plot(agg_df: pd.DataFrame, model_data: pd.DataFrame, plot_dir:
     # draws sometimes have last day dropped if they're missing full compliment
     # of locations, so we should drop those days from data too
     summ_df = summ_df[summ_df['Date'] <= agg_df['Date'].max()]
-    smoother.plotter(summ_df,
-                     [obs_var] + list(compress(spline_vars, (~summ_df[spline_vars].isnull().all(axis=0)).to_list())),
-                     agg_df,
-                     f"{plot_dir}/{summ_df['location_id'][0]}.pdf")
+    for location_id in summ_df['location_id'].unique():
+        p_summ_df = summ_df.loc[summ_df['location_id'] == location_id].reset_index(drop=True)
+        p_agg_df = agg_df.loc[agg_df['location_id'] == location_id].reset_index(drop=True)
+        smoother.plotter(p_summ_df,
+                         [obs_var] + list(compress(spline_vars, (~p_summ_df[spline_vars].isnull().all(axis=0)).to_list())),
+                         p_agg_df,
+                         f"{plot_dir}/{location_id}.pdf")

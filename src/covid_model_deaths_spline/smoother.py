@@ -275,22 +275,27 @@ def synthesize_time_series(location_id: int,
     # location data
     df = data[data.location_id == location_id]
 
-    # spline on output (first determine space based on number of deaths)
+    # spline on deaths time series
     total_deaths = (df['Death rate'] * df['population']).max()
-    if len(df) >= 30 and total_deaths > 10:
-        n_i_knots = 5
-    elif len(df) >= 15 and total_deaths > 5:
-        n_i_knots = 4
-    else:
-        n_i_knots = 3
-    noisy_draws, smooth_draws, best_settings = smoother(
-        df=df.copy(),
-        obs_var=obs_var,
-        pred_vars=pred_vars,
-        n_i_knots=n_i_knots,
-        n_draws=n_draws,
-        total_deaths=total_deaths
-    )
+    draws_pending = True
+    n_i_knots = 5
+    while draws_pending:
+        try:
+            noisy_draws, smooth_draws, best_settings = smoother(
+                df=df.copy(),
+                obs_var=obs_var,
+                pred_vars=pred_vars,
+                n_i_knots=n_i_knots,
+                n_draws=n_draws,
+                total_deaths=total_deaths
+            )
+            draws_pending = False
+        except:
+            print(f'Synthesis spline failed with {n_i_knots} knots.')
+        if n_i_knots == 3:
+            draws_pending = False
+        else:
+            n_i_knots -= 1
     draw_cols = [col for col in noisy_draws.columns if col.startswith('draw_')]
     df = summarize.append_summary_statistics(smooth_draws, df)
     

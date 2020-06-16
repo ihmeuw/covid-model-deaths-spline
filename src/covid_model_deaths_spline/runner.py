@@ -39,12 +39,25 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     hosp_data = data.holdout_days(hosp_data, holdout_days)
     death_data = data.holdout_days(death_data, holdout_days)
 
-    logger.debug(f"Filtering data by location.")
+    logger.debug("Filtering data by location.")
     case_data, missing_cases = data.filter_data_by_location(case_data, hierarchy, 'cases')
     hosp_data, missing_hosp = data.filter_data_by_location(hosp_data, hierarchy, 'hospitalizations')
     death_data, missing_deaths = data.filter_data_by_location(death_data, hierarchy, 'deaths')
     pop_data, missing_pop = data.filter_data_by_location(pop_data, hierarchy, 'population')
+    
+    logger.debug("Combine datasets.")
     model_data = data.combine_data(case_data, hosp_data, death_data, pop_data, hierarchy)
+    
+    logger.debug("Create aggregates for modeling.")
+    hierarchy, agg_locations = aggregate.get_agg_hierarchy(hierarchy)
+    agg_model_data = aggregate.compute_location_aggregates_data(
+        model_data, hierarchy, agg_locations, 
+        ['Confirmed case rate', 'Hospitalization rate', 'Death rate']
+    )
+    model_data = model_data.append(agg_model_data).reset_index(drop=True)
+    del agg_model_data
+    
+    logger.debug("Filter based on threshold.")
     model_data, no_cases_locs, no_hosp_locs = data.filter_to_epi_threshold(hierarchy, model_data, 3)
 
     logger.debug('Preparing model settings.')
@@ -99,14 +112,18 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     noisy_draws = pd.concat([r['noisy_draws'] for r in results]).reset_index(drop=True)
     smooth_draws = pd.concat([r['smooth_draws'] for r in results]).reset_index(drop=True)
 
-    agg_model_data = aggregate.compute_location_aggregates_data(model_data, hierarchy)
-    agg_draw_df = aggregate.compute_location_aggregates_draws(smooth_draws.rename(columns={'date': 'Date'}), hierarchy)
-
+    logger.debug("Make aggregate(s) and plot them.")
+    agg_model_data = aggregate.compute_location_aggregates_data(model_data, hierarchy, agg_locations)
+    agg_model_data['location_id'] = -agg_model_data['location_id']
+    agg_model_data['location_name'] = agg_model_data['location_name'] + ' (model aggregate)'
+    agg_draw_df = aggregate.compute_location_aggregates_draws(smooth_draws.rename(columns={'date': 'Date'}),
+                                                              hierarchy, agg_locations)
+    agg_model_data['location_id'] = -agg_model_data['location_id']
     obs_var = smoother_settings['obs_var']
     spline_vars = smoother_settings['spline_vars']
     summarize.summarize_and_plot(agg_draw_df, agg_model_data, str(plot_dir), obs_var=obs_var, spline_vars=spline_vars)
 
-    logger.debug("Synthesizing plots.")
+    logger.debug("Compiling plots.")
     pdf_merger.pdf_merger(indir=plot_dir, outfile=str(output_root / 'model_results.pdf'))
 
     logger.debug("Writing output data.")

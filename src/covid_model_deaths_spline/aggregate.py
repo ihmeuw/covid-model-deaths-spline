@@ -3,6 +3,8 @@ from typing import List
 import collections
 import pandas as pd
 
+from db_queries import get_location_metadata
+
 
 # Just interested in US plots for now
 Location = collections.namedtuple("Location", "location_id location_name")
@@ -37,7 +39,10 @@ def compute_location_aggregates_draws(df: pd.DataFrame, hierarchy: pd.DataFrame,
     return agg_df
 
 
-def compute_location_aggregates_data(df: pd.DataFrame, hierarchy: pd.DataFrame, aggregates: List[Location] = AGGREGATE_LOCATIONS) -> pd.DataFrame:
+def compute_location_aggregates_data(df: pd.DataFrame, hierarchy: pd.DataFrame, 
+                                     aggregates: List[Location] = AGGREGATE_LOCATIONS,
+                                     rate_cols: List[str] = ['Confirmed case rate', 'Death rate', 'Predicted death rate (CFR)',
+                                                             'Hospitalization rate', 'Predicted death rate (HFR)']) -> pd.DataFrame:
     """
     Aggregate draws by parent location and Date. We assume here that model data
     columns are in rate space , and that the child locations in the draws are
@@ -58,18 +63,19 @@ def compute_location_aggregates_data(df: pd.DataFrame, hierarchy: pd.DataFrame, 
     df = df.copy()
 
     # Temporarily convert rates to counts during aggregation
-    rate_cols = ['Confirmed case rate', 'Death rate', 'Predicted death rate (CFR)',
-                 'Hospitalization rate', 'Predicted death rate (HFR)']
     df[rate_cols] = df[rate_cols].multiply(df['population'], axis=0)
 
     agg_dfs = []
     for aggregate_id, aggregate_name in aggregates:
-        child_ids = hierarchy.loc[hierarchy.path_to_top_parent.str.contains(f'{aggregate_id},'), 'location_id'].tolist()
+        child_ids = hierarchy.loc[hierarchy['path_to_top_parent'].str.contains(f'{aggregate_id},'), 'location_id'].tolist()
         subdf = df[df['location_id'].isin(child_ids)].copy().assign(location_id=aggregate_id, location_name=aggregate_name)
 
         group_cols = ['Date', 'location_name', 'location_id']
         # groupby.sum doesn't support skipna option, so we propagate nans via
         # dataframe.sum
+        subdf['n_values'] = subdf.groupby('Date')['location_id'].transform('count')
+        subdf = subdf.loc[subdf['n_values'] == subdf['n_values'].max()]
+        del subdf['n_values']
         subdf = subdf.groupby(group_cols).apply(pd.DataFrame.sum, skipna=False).drop(group_cols, axis=1, errors='ignore').reset_index()
         agg_dfs.append(subdf)
     agg_df = pd.concat(agg_dfs, ignore_index=True)
@@ -89,3 +95,32 @@ def _drop_last_day(df: pd.DataFrame, num_locs: int):
     last_date_with_correct_loc_count = rows_per_date[rows_per_date == num_locs].index.max()
     dates_to_drop = rows_per_date[rows_per_date.index > last_date_with_correct_loc_count].index
     return df[~df['Date'].isin(dates_to_drop)]
+
+
+def get_agg_hierarchy(hierarchy: pd.DataFrame):
+    hierarchy = hierarchy.copy()
+        
+    # attach regions
+    hierarchy['top_parent'] = hierarchy['path_to_top_parent'].apply(lambda x: int(x.split(',')[0]))
+    gbd_hierarchy = get_location_metadata(location_set_id=35, gbd_round_id=6)
+    gbd_hierarchy = gbd_hierarchy.loc[gbd_hierarchy['level'] <= 3].reset_index(drop=True)
+    gbd_hierarchy = gbd_hierarchy.rename(index=str, columns={'location_id':'top_parent'})
+    hierarchy = hierarchy.merge(gbd_hierarchy[['top_parent', 'region_id']], how='left')
+    hierarchy['region_id'] = hierarchy['region_id'].astype(int)
+    hierarchy['path_to_top_parent'] = hierarchy['region_id'].astype(str) + ',' + hierarchy['path_to_top_parent']
+    hierarchy = hierarchy.drop(['region_id', 'top_parent'], axis=1)
+    
+    # countries with subnats
+    region_ids = hierarchy['path_to_top_parent'].apply(lambda x: x.split(',')[0]).unique().tolist()
+    country_ids = (hierarchy['path_to_top_parent']
+                   .apply(lambda x: x.split(',')[1] if len(x.split(',')) > 2 else '')
+                   .unique())
+    country_ids = country_ids[country_ids != ''].tolist()
+    agg_location_ids = sorted(country_ids) + sorted(region_ids)
+    agg_locations = []
+    for agg_location_id in agg_location_ids:
+        agg_locations.append(Location(location_id=int(agg_location_id), 
+                                      location_name=gbd_hierarchy.loc[gbd_hierarchy['top_parent'] == int(agg_location_id),
+                                                                      'location_name'].item()))
+    
+    return hierarchy, agg_locations

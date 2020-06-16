@@ -143,16 +143,21 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame, plot_
         **smoothed_pred_area
     )
     
-    # smoothed draws - ln(rate)
+    ## smoothed draws - ln(rate)
+    # format draws
     draw_df = draw_df.copy()
     draw_cols = [col for col in draw_df.columns if col.startswith('draw_')]
     draw_df.iloc[1:][draw_cols] = np.diff(draw_df[draw_cols], axis=0)
     draw_df[draw_cols] = np.log(draw_df[draw_cols])
+    
+    # format model inputs
     df = df.copy()
-    df['Death rate'][1:] = np.diff(df['Death rate'])
     floor = 0.01 / df['population'].values[0]
-    df.loc[df['Death rate'] < floor, 'Death rate'] = floor
-    #plt.subplot(int(f'{n_rows}{1}{n_rows}'))
+    for input_var in ['Death rate', 'Predicted death rate (CFR)', 'Predicted death rate (HFR)']:
+        df[input_var][1:] = np.diff(df['Death rate'])
+        df.loc[df[input_var] < floor, input_var] = floor
+    
+    # plot
     ax_draws = fig.add_subplot(gs[2:, 0:])
     ax_draws.plot(draw_df['Date'],
              draw_df[draw_cols],
@@ -164,10 +169,17 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame, plot_
     ax_draws.set_xlabel('Date', fontsize=14)
     ax_draws.plot(df['Date'],
                   np.log(df['Death rate']),
-                        **raw_lines)
+                  **raw_lines)
     ax_draws.scatter(df['Date'],
                      np.log(df['Death rate']),
                      **raw_points)
+    ax_draws.plot(df['Date'],
+                  np.log(df['Predicted death rate (CFR)']),
+                  **cfr_lines)
+    ax_draws.plot(df['Date'],
+                  np.log(df['Predicted death rate (HFR)']),
+                  **hfr_lines)
+    ##
 
     fig.suptitle(df['location_name'].values[0], y=1.0025, fontsize=24)
     fig.tight_layout()

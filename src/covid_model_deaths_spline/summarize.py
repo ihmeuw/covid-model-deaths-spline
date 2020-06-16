@@ -21,27 +21,24 @@ def append_summary_statistics(draw_df: pd.DataFrame, df: pd.DataFrame) -> pd.Dat
     draw_cols = [col for col in draw_df.columns if col.startswith('draw_')]
 
     summ_df = draw_df.copy()
-    summ_df = summ_df.sort_values('Date')
+    summ_df = summ_df.sort_values(['location_id', 'Date'])
     summ_df['Smoothed predicted death rate'] = np.mean(summ_df[draw_cols], axis=1)
     summ_df['Smoothed predicted death rate lower'] = np.percentile(summ_df[draw_cols], 2.5, axis=1)
     summ_df['Smoothed predicted death rate upper'] = np.percentile(summ_df[draw_cols], 97.5, axis=1)
-    summ_df['Smoothed predicted daily death rate'] = np.nan
-    summ_df['Smoothed predicted daily death rate'][1:] = np.mean(np.diff(summ_df[draw_cols], axis=0),
-                                                                 axis=1)
-    summ_df['Smoothed predicted daily death rate lower'] = np.nan
-    summ_df['Smoothed predicted daily death rate lower'][1:] = np.percentile(np.diff(summ_df[draw_cols], axis=0),
-                                                                             2.5, axis=1)
-    summ_df['Smoothed predicted daily death rate upper'] = np.nan
-    summ_df['Smoothed predicted daily death rate upper'][1:] = np.percentile(np.diff(summ_df[draw_cols], axis=0),
-                                                                             97.5, axis=1)
-    summ_df = summ_df[['Date'] + [i for i in summ_df.columns if i.startswith('Smoothed predicted')]]
+    summ_df['Smoothed predicted daily death rate'] = np.mean(np.diff(summ_df[draw_cols], axis=0, prepend=np.nan),
+                                                             axis=1)
+    summ_df['Smoothed predicted daily death rate lower'] = np.percentile(np.diff(summ_df[draw_cols], axis=0, prepend=np.nan),
+                                                                         2.5, axis=1)
+    summ_df['Smoothed predicted daily death rate upper'] = np.percentile(np.diff(summ_df[draw_cols], axis=0, prepend=np.nan),
+                                                                         97.5, axis=1)
+    summ_df = summ_df[['location_id', 'Date'] + [i for i in summ_df.columns if i.startswith('Smoothed predicted')]]
 
-    first_day = summ_df['Date'] == summ_df['Date'].min()
+    first_day = summ_df['Date'] == summ_df.groupby('location_id')['Date'].transform(min)
     summ_df.loc[first_day, 'Smoothed predicted daily death rate'] = summ_df['Smoothed predicted death rate']
     summ_df.loc[first_day, 'Smoothed predicted daily death rate lower'] = summ_df['Smoothed predicted death rate lower']
     summ_df.loc[first_day, 'Smoothed predicted daily death rate upper'] = summ_df['Smoothed predicted death rate upper']
     df = df.merge(summ_df, how='left')
-    df = df.sort_values('Date')
+    df = df.sort_values(['location_id', 'Date'])
 
     return df
 

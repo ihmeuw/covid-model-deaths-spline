@@ -47,6 +47,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     
     logger.debug("Combine datasets.")
     model_data = data.combine_data(case_data, hosp_data, death_data, pop_data, hierarchy)
+    model_data = model_data.sort_values(['location_id', 'Date']).reset_index(drop=True)
     
     logger.debug("Create aggregates for modeling.")
     hierarchy, agg_locations = aggregate.get_agg_hierarchy(hierarchy)
@@ -60,7 +61,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     logger.debug("Filter based on threshold.")
     model_data, no_cases_locs, no_hosp_locs = data.filter_to_epi_threshold(hierarchy, model_data, 3)
 
-    logger.debug('Preparing model settings.')
+    logger.debug("Preparing model settings.")
     model_settings = {}
     s1_settings = {'dep_var': 'Death rate',
                    'model_dir': str(model_dir),
@@ -85,7 +86,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     model_settings['no_cases_locs'] = no_cases_locs
     model_settings['no_hosp_locs'] = no_hosp_locs
 
-    logger.debug('Launching models by location.')
+    logger.debug("Launching models by location.")
     working_dir = output_root / 'model_working_dir'
     shell_tools.mkdir(working_dir)
     data_path = Path(working_dir) / 'model_data.pkl'
@@ -103,7 +104,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     }
     cluster.run_cluster_jobs('covid_death_models', output_root, job_args_map)
 
-    logger.debug('Compiling results.')
+    logger.debug("Compiling results.")
     results = []
     for result_path in results_path.iterdir():
         with result_path.open('rb') as result_file:

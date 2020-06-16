@@ -60,10 +60,11 @@ def get_shifted_data(full_data: pd.DataFrame, count_var: str, rate_var: str, shi
 
 def get_death_data(full_data: pd.DataFrame) -> pd.DataFrame:
     """Filter and clean death data."""
-    non_na = ~full_data['Death rate'].isnull()
-    has_deaths = full_data.groupby('location_id')['Death rate'].transform(max).astype(bool)
-    keep_columns = ['location_id', 'Date', 'Death rate']
-    death_df = full_data.loc[non_na & has_deaths, keep_columns].reset_index(drop=True)
+    non_na = ~full_data['Deaths'].isnull()
+    keep_columns = ['location_id', 'Date', 'Deaths', 'population']
+    death_df = full_data.loc[non_na, keep_columns].reset_index(drop=True)
+    death_df['Death rate'] = death_df['Deaths'] / death_df['population']
+    del death_df['population']
 
     death_df = (death_df.groupby('location_id', as_index=False)
                 .apply(lambda x: fill_dates(x, 'Death rate'))

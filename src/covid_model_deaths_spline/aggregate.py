@@ -109,14 +109,15 @@ def get_agg_hierarchy(hierarchy: pd.DataFrame):
     hierarchy['region_id'] = hierarchy['region_id'].astype(int)
     hierarchy['path_to_top_parent'] = hierarchy['region_id'].astype(str) + ',' + hierarchy['path_to_top_parent']
     hierarchy = hierarchy.drop(['region_id', 'top_parent'], axis=1)
+    hierarchy['path_to_top_parent'] = '1,' + hierarchy['path_to_top_parent']
     
     # countries with subnats
-    region_ids = hierarchy['path_to_top_parent'].apply(lambda x: x.split(',')[0]).unique().tolist()
+    region_ids = hierarchy['path_to_top_parent'].apply(lambda x: x.split(',')[1]).unique().tolist()
     country_ids = (hierarchy['path_to_top_parent']
-                   .apply(lambda x: x.split(',')[1] if len(x.split(',')) > 2 else '')
+                   .apply(lambda x: x.split(',')[2] if len(x.split(',')) > 3 else '')
                    .unique())
     country_ids = country_ids[country_ids != ''].tolist()
-    agg_location_ids = sorted(country_ids) + sorted(region_ids)
+    agg_location_ids = ['1'] + sorted(country_ids) + sorted(region_ids)
     agg_locations = []
     for agg_location_id in agg_location_ids:
         agg_locations.append(Location(location_id=int(agg_location_id), 

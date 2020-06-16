@@ -107,7 +107,6 @@ class SplineFit:
             if np.diff([spline_data.min(), np.quantile(spline_data[observed], 0.05)]) > 1e-10:
                 n_intervals -= 1
                 k_start = 0.15
-            #
             if np.diff([np.quantile(spline_data[observed], 0.95), spline_data.max()]) > 1e-10:
                 n_intervals -= 1
                 k_end = 0.85

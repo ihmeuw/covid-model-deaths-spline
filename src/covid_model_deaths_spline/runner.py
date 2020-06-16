@@ -143,7 +143,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
 
     logger.debug("Compiling plots.")
     plot_hierarchy = aggregate.get_sorted_hierarchy_w_aggs(hierarchy, agg_hierarchy)
-    possible_pdfs = [f'{l}.pdf' for l in plot_hierarchy.location_id]
+    possible_pdfs = ['-1.pdf'] + [f'{l}.pdf' for l in plot_hierarchy.location_id]
     existing_pdfs = [str(x).split('/')[-1] for x in plot_dir.iterdir() if x.is_file()]
     pdfs = [f'{plot_dir}/{pdf}' for pdf in possible_pdfs if pdf in existing_pdfs]
     pdf_merger.pdf_merger(pdfs=pdfs, outfile=str(output_root / 'model_results.pdf'))

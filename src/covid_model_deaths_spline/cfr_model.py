@@ -53,15 +53,17 @@ def cfr_model(location_id: int,
 
     # lose NAs in deaths as well for modeling
     mod_df = df.copy()
-    above_thresh = (mod_df[dep_var] * df['population']) >= deaths_threshold
-    has_x = (mod_df[spline_var] * df['population']) >= 1
+    #above_thresh = (mod_df[dep_var] * df['population']) >= deaths_threshold
+    #has_x = (mod_df[spline_var] * df['population']) >= 1
     non_na = ~mod_df[adj_vars[dep_var]].isnull()
-    mod_df = mod_df.loc[above_thresh & has_x & non_na, ['intercept'] + list(adj_vars.values())].reset_index(drop=True)
-    if len(mod_df) < 3:
-        raise ValueError(f"Fewer than 3 days with deaths {df['location_name'][0]}")
+    #max_1week_of_zeros_dep = (mod_df[dep_var][::-1] == 0).cumsum()[::-1] <= 7
+    max_1week_of_zeros_spline = (mod_df[spline_var][::-1] == 0).cumsum()[::-1] <= 7
+    #mod_df = mod_df.loc[above_thresh & has_x & non_na, ['intercept'] + list(adj_vars.values())].reset_index(drop=True)
+    mod_df = mod_df.loc[non_na & max_1week_of_zeros_spline,  # max_1week_of_zeros_dep
+                        ['intercept'] + list(adj_vars.values())].reset_index(drop=True)
 
     # run model and predict
-    spline_options={
+    spline_options = {
         'spline_knots_type': 'frequency',
         'spline_degree': 3,
         'spline_r_linear':True,
@@ -92,7 +94,7 @@ def cfr_model(location_id: int,
                 print(f'Elasticity model failed with {n_i_knots} knots (nans).')
         except:
             print(f'Elasticity model failed with {n_i_knots} knots (error).')
-        if n_i_knots == 3:
+        if n_i_knots == 1:
             prediction_pending = False
         else:
             n_i_knots -= 1

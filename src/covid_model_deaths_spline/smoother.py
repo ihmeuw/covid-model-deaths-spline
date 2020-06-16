@@ -292,7 +292,7 @@ def synthesize_time_series(location_id: int,
             draws_pending = False
         except:
             print(f'Synthesis spline failed with {n_i_knots} knots.')
-        if n_i_knots == 3:
+        if n_i_knots == 1:
             draws_pending = False
         else:
             n_i_knots -= 1

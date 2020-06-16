@@ -21,9 +21,21 @@ def load_most_detailed_locations(inputs_root: Path) -> pd.DataFrame:
     hierarchy = pd.read_csv(location_hierarchy_path)
 
     most_detailed = hierarchy['most_detailed'] == 1
-    keep_columns = ['location_id', 'location_name', 'path_to_top_parent']
+    keep_columns = ['location_id', 'location_name', 'path_to_top_parent', 'sort_order']
 
-    return hierarchy.loc[most_detailed, keep_columns]
+    return hierarchy.loc[most_detailed, keep_columns].sort_values('sort_order').reset_index(drop=True)
+
+
+def load_aggregate_locations(inputs_root: Path) -> pd.DataFrame:
+    """Loads the parent locations in the current modeling hierarchy (except global)."""
+    location_hierarchy_path = inputs_root / 'locations' / 'modeling_hierarchy.csv'
+    hierarchy = pd.read_csv(location_hierarchy_path)
+
+    aggregate = hierarchy['most_detailed'] == 0
+    not_global = hierarchy['location_id'] != 1
+    keep_columns = ['location_id', 'location_name', 'path_to_top_parent', 'sort_order']
+
+    return hierarchy.loc[aggregate & not_global, keep_columns].sort_values('sort_order').reset_index(drop=True)
 
 
 def load_full_data(inputs_root: Path) -> pd.DataFrame:
@@ -76,6 +88,8 @@ def get_death_data(full_data: pd.DataFrame) -> pd.DataFrame:
 def get_population_data(full_data: pd.DataFrame) -> pd.DataFrame:
     """Filter and clean population data."""
     pop_df = full_data[['location_id', 'population']].drop_duplicates()
+    non_na = ~pop_df['population'].isnull()
+    pop_df = pop_df.loc[non_na]
     pop_df = pop_df.reset_index(drop=True)
     return pop_df
 
@@ -183,7 +197,7 @@ def fill_dates(df: pd.DataFrame, interp_var: str = None) -> pd.DataFrame:
     if interp_var:
         df[interp_var] = df[interp_var].interpolate()
     df = df.fillna(method='pad')
-
+    df['location_id'] = df['location_id'].astype(int)
     return df
 
 

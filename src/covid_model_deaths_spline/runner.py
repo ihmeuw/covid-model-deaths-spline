@@ -24,6 +24,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
 
     logger.debug("Loading and cleaning data.")
     hierarchy = data.load_most_detailed_locations(input_root)
+    agg_hierarchy = data.load_aggregate_locations(input_root)
     full_data = data.load_full_data(input_root)
     case_data = data.get_shifted_data(full_data, 'Confirmed', 'Confirmed case rate')
     hosp_data = data.get_shifted_data(full_data, 'Hospitalizations', 'Hospitalization rate')
@@ -50,12 +51,14 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     model_data = model_data.sort_values(['location_id', 'Date']).reset_index(drop=True)
     
     logger.debug("Create aggregates for modeling.")
-    hierarchy, agg_locations = aggregate.get_agg_hierarchy(hierarchy)
+    agg_locations = [aggregate.Location(lid, lname) for lid, lname in 
+                     zip(agg_hierarchy['location_id'], agg_hierarchy['location_name'])]
     agg_model_data = aggregate.compute_location_aggregates_data(
         model_data, hierarchy, agg_locations, 
         ['Confirmed case rate', 'Hospitalization rate', 'Death rate']
     )
-    model_data = model_data.append(agg_model_data).reset_index(drop=True)
+    model_data = model_data.append(agg_model_data)
+    model_data = model_data.sort_values(['location_id', 'Date']).reset_index(drop=True)
     
     logger.debug("Filter cases/hospitalizations based on threshold.")
     model_data, no_cases_locs, no_hosp_locs = data.filter_to_epi_threshold(hierarchy, model_data)
@@ -119,23 +122,6 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     model_data = post_model_data.append(model_data.loc[model_data['location_id'].isin(failed_model_locations)])
     
     logger.debug("Fill failed model locations with parent and plot them.")
-    hierarchy
-    smooth_draws
-    model_data
-    
-    failed_hierarchy = hierarchy.loc[hierarchy['location_id'].isin(failed_model_locations)].reset_index(drop=True)
-    failed_hierarchy['parent_id'] = failed_hierarchy['path_to_top_parent'].apply(lambda x: int(x.split(',')[-2]))
-    swip_swap = list(zip(failed_hierarchy['location_id'], failed_hierarchy['parent_id']))
-    
-    filled_draws = []
-    for child_id, parent_id in swip_swap:
-        print(child_id, parent_id)
-        draws = smooth_draws.loc[smooth_draws['location_id'] == parent_id]
-        draws['location_id'] = child_id
-        draws = draws.set_index(['location_id', 'date'])
-        draws /= model_data.loc[model_data['location_id'] == parent_id, 'population'].values[0]
-        draws *= model_data.loc[model_data['location_id'] == child_id, 'population'].values[0]
-        filled_draws.append(draws.reset_index())
         
     logger.debug("Make aggregate(s) and plot them.")
     agg_model_data = aggregate.compute_location_aggregates_data(model_data, hierarchy, agg_locations)
@@ -164,3 +150,24 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     model_data.rename(columns={'date': 'Date'}).reset_index().to_csv(output_root / 'model_data.csv', index=False)
     noisy_draws.reset_index().to_csv(output_root / 'model_results.csv', index=False)
     smooth_draws.reset_index().to_csv(output_root / 'model_results_refit.csv', index=False)
+
+    
+def apply_parents(hierarchy: pd.DataFrame, smooth_draws: pd.DataFrame, model_data: pd.DataFrame) -> Tuple[pd.DateFrame, pd.DataFrame]:    
+    failed_hierarchy = hierarchy.loc[hierarchy['location_id'].isin(failed_model_locations)].reset_index(drop=True)
+    failed_hierarchy['parent_id'] = failed_hierarchy['path_to_top_parent'].apply(lambda x: int(x.split(',')[-2]))
+    swip_swap = list(zip(failed_hierarchy['location_id'], failed_hierarchy['parent_id']))
+    
+    filled_draws = []
+    for child_id, parent_id in swip_swap:
+        print(child_id, parent_id)
+        draws = smooth_draws.loc[smooth_draws['location_id'] == parent_id]
+        draws['location_id'] = child_id
+        draws = draws.set_index(['location_id', 'date'])
+        draws /= model_data.loc[model_data['location_id'] == parent_id, 'population'].values[0]
+        draws *= model_data.loc[model_data['location_id'] == child_id, 'population'].values[0]
+        filled_draws.append(draws.reset_index())
+        parent_name = model_data.loc[model_data['location_id'] == parent_id, 'location_name'].values[0]
+        child_name = model_data.loc[model_data['location_id'] == child_id, 'location_name'].values[0]
+        model_data.loc[model_data['location_id'] == child_id, 'location_name'] = f'{child_name} (using {parent_name} model)'
+        
+    return smooth_draws, model_data

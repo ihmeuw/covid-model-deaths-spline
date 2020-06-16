@@ -120,22 +120,29 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
                               .unique().tolist())
     failed_model_locations = [l for l in failed_model_locations if l in hierarchy['location_id'].to_list()]
     model_data = post_model_data.append(model_data.loc[model_data['location_id'].isin(failed_model_locations)])
+    obs_var = smoother_settings['obs_var']
+    spline_vars = smoother_settings['spline_vars']
     
     logger.debug("Fill failed model locations with parent and plot them.")
+    smooth_draws, model_data = data.apply_parents(failed_model_locations, hierarchy, smooth_draws, model_data)
+    summarize.summarize_and_plot(
+        smooth_draws.loc[smooth_draws['location_id'].isin(failed_model_locations)].rename(columns={'date': 'Date'}),
+        model_data.loc[model_data['location_id'].isin(failed_model_locations)],
+        str(plot_dir), obs_var=obs_var, spline_vars=spline_vars
+    )
         
-    logger.debug("Make aggregate(s) and plot them.")
+    logger.debug("Make post-model aggregates and plot them.")
+    agg_locations = [aggregate.Location(1, 'Global')] + agg_locations
     agg_model_data = aggregate.compute_location_aggregates_data(model_data, hierarchy, agg_locations)
     agg_model_data['location_id'] = -agg_model_data['location_id']
     agg_model_data['location_name'] = agg_model_data['location_name'] + ' (model aggregate)'
     agg_draw_df = aggregate.compute_location_aggregates_draws(smooth_draws.rename(columns={'date': 'Date'}),
                                                               hierarchy, agg_locations)
     agg_draw_df['location_id'] = -agg_draw_df['location_id']
-    obs_var = smoother_settings['obs_var']
-    spline_vars = smoother_settings['spline_vars']
     summarize.summarize_and_plot(agg_draw_df, agg_model_data, str(plot_dir), obs_var=obs_var, spline_vars=spline_vars)
 
     logger.debug("Compiling plots.")
-    plot_hierarchy = aggregate.get_sorted_hierarchy_w_aggs(hierarchy, agg_locations)
+    plot_hierarchy = aggregate.get_sorted_hierarchy_w_aggs(hierarchy, agg_hierarchy)
     possible_pdfs = [f'{l}.pdf' for l in plot_hierarchy.location_id]
     existing_pdfs = [str(x).split('/')[-1] for x in plot_dir.iterdir() if x.is_file()]
     pdfs = [f'{plot_dir}/{pdf}' for pdf in possible_pdfs if pdf in existing_pdfs]
@@ -150,24 +157,3 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     model_data.rename(columns={'date': 'Date'}).reset_index().to_csv(output_root / 'model_data.csv', index=False)
     noisy_draws.reset_index().to_csv(output_root / 'model_results.csv', index=False)
     smooth_draws.reset_index().to_csv(output_root / 'model_results_refit.csv', index=False)
-
-    
-def apply_parents(hierarchy: pd.DataFrame, smooth_draws: pd.DataFrame, model_data: pd.DataFrame) -> Tuple[pd.DateFrame, pd.DataFrame]:    
-    failed_hierarchy = hierarchy.loc[hierarchy['location_id'].isin(failed_model_locations)].reset_index(drop=True)
-    failed_hierarchy['parent_id'] = failed_hierarchy['path_to_top_parent'].apply(lambda x: int(x.split(',')[-2]))
-    swip_swap = list(zip(failed_hierarchy['location_id'], failed_hierarchy['parent_id']))
-    
-    filled_draws = []
-    for child_id, parent_id in swip_swap:
-        print(child_id, parent_id)
-        draws = smooth_draws.loc[smooth_draws['location_id'] == parent_id]
-        draws['location_id'] = child_id
-        draws = draws.set_index(['location_id', 'date'])
-        draws /= model_data.loc[model_data['location_id'] == parent_id, 'population'].values[0]
-        draws *= model_data.loc[model_data['location_id'] == child_id, 'population'].values[0]
-        filled_draws.append(draws.reset_index())
-        parent_name = model_data.loc[model_data['location_id'] == parent_id, 'location_name'].values[0]
-        child_name = model_data.loc[model_data['location_id'] == child_id, 'location_name'].values[0]
-        model_data.loc[model_data['location_id'] == child_id, 'location_name'] = f'{child_name} (using {parent_name} model)'
-        
-    return smooth_draws, model_data

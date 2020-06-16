@@ -80,7 +80,7 @@ def compute_location_aggregates_data(df: pd.DataFrame, hierarchy: pd.DataFrame, 
             # only keep dates with at least 95% of potential population
             max_pop = subdf['population'].max()
             subdf = subdf.loc[subdf['population'] >= max_pop * 0.95]
-            subdf[rate_cols] = subdf[rate_cols].divide(df['population'], axis=0)
+            subdf[rate_cols] = subdf[rate_cols].divide(subdf['population'], axis=0)
             subdf['population'] = max_pop
             agg_dfs.append(subdf)
     agg_df = pd.concat(agg_dfs, ignore_index=True)
@@ -112,3 +112,16 @@ def _drop_last_day(df: pd.DataFrame, num_locs: int):
     last_date_with_correct_loc_count = rows_per_date[rows_per_date == num_locs].index.max()
     dates_to_drop = rows_per_date[rows_per_date.index > last_date_with_correct_loc_count].index
     return df[~df['Date'].isin(dates_to_drop)]
+
+
+def get_sorted_hierarchy_w_aggs(hierarchy: pd.DataFrame, agg_hierarchy: pd.DataFrame) -> pd.DataFrame:
+    hierarchy = hierarchy.copy()
+    hierarchy = agg_hierarchy.append(hierarchy)
+    
+    neg_hierarchy = hierarchy.copy()
+    neg_hierarchy['location_id'] = -neg_hierarchy['location_id']
+    hierarchy = hierarchy.append(neg_hierarchy)
+    
+    hierarchy = hierarchy.sort_values(['sort_order', 'location_id'])
+    
+    return hierarchy

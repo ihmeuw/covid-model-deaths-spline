@@ -39,6 +39,9 @@ def append_summary_statistics(draw_df: pd.DataFrame, df: pd.DataFrame) -> pd.Dat
     summ_df.loc[first_day, 'Smoothed predicted daily death rate upper'] = summ_df['Smoothed predicted death rate upper']
     df = df.merge(summ_df, how='outer')
     df = df.sort_values(['location_id', 'Date'])
+    
+    if df['population'].isnull().any():
+        df['population'] = df.groupby('location_id')['population'].transform(max)
 
     return df
 

@@ -201,5 +201,24 @@ def fill_dates(df: pd.DataFrame, interp_var: str = None) -> pd.DataFrame:
     return df
 
 
-def apply_parent_model():
-    pass
+def apply_parents(failed_model_locations: List[int], hierarchy: pd.DataFrame, 
+                  smooth_draws: pd.DataFrame, model_data: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:    
+    failed_hierarchy = hierarchy.loc[hierarchy['location_id'].isin(failed_model_locations)].reset_index(drop=True)
+    failed_hierarchy['parent_id'] = failed_hierarchy['path_to_top_parent'].apply(lambda x: int(x.split(',')[-2]))
+    swip_swap = list(zip(failed_hierarchy['location_id'], failed_hierarchy['parent_id']))
+    
+    filled_draws = []
+    for child_id, parent_id in swip_swap:
+        draws = smooth_draws.loc[smooth_draws['location_id'] == parent_id]
+        draws['location_id'] = child_id
+        draws = draws.set_index(['location_id', 'date'])
+        draws /= model_data.loc[model_data['location_id'] == parent_id, 'population'].values[0]
+        draws *= model_data.loc[model_data['location_id'] == child_id, 'population'].values[0]
+        filled_draws.append(draws.reset_index())
+        parent_name = model_data.loc[model_data['location_id'] == parent_id, 'location_name'].values[0]
+        child_name = model_data.loc[model_data['location_id'] == child_id, 'location_name'].values[0]
+        model_data.loc[model_data['location_id'] == child_id, 'location_name'] = f'{child_name} (using {parent_name} model)'
+    filled_draws = pd.concat(filled_draws)
+    smooth_draws = smooth_draws.append(filled_draws)
+        
+    return smooth_draws, model_data

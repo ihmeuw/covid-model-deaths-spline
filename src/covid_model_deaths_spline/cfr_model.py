@@ -75,7 +75,7 @@ def cfr_model(location_id: int,
                 indep_vars=['intercept'] + list(map(adj_vars.get, indep_vars)),
                 n_i_knots=n_i_knots,
                 spline_options=spline_options,
-                scale_se=False
+                scale_se=True
             )
             mr_model.fit_model()
             prediction = mr_model.predict(df)

@@ -80,7 +80,7 @@ class SplineFit:
             use_re=False,
             use_spline=True,
             **spline_options,
-            prior_spline_num_constraint_points=50,
+            prior_spline_num_constraint_points=100,
             spline_knots=ensemble_knots[0],
             name=spline_var
         )

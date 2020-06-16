@@ -65,7 +65,7 @@ def cfr_model(location_id: int,
         
     # run model
     prediction_pending = True
-    n_i_knots = 5
+    n_i_knots = 6
     while prediction_pending:
         try:
             mr_model = SplineFit(

@@ -3,16 +3,15 @@ from typing import List
 import collections
 import pandas as pd
 
+from covid_model_deaths_spline.data import fill_dates
 from db_queries import get_location_metadata
 
 
 # Just interested in US plots for now
 Location = collections.namedtuple("Location", "location_id location_name")
-usa = Location(location_id=102, location_name="United States of America")
-AGGREGATE_LOCATIONS = [usa]
 
 
-def compute_location_aggregates_draws(df: pd.DataFrame, hierarchy: pd.DataFrame, aggregates: List[Location] = AGGREGATE_LOCATIONS) -> pd.DataFrame:
+def compute_location_aggregates_draws(df: pd.DataFrame, hierarchy: pd.DataFrame, aggregates: List[Location]) -> pd.DataFrame:
     """
     Aggregate draws by parent location and Date. We assume here that draws
     are in count space, and that the child locations in the draws are
@@ -32,16 +31,16 @@ def compute_location_aggregates_draws(df: pd.DataFrame, hierarchy: pd.DataFrame,
         child_ids = hierarchy.loc[hierarchy['path_to_top_parent'].apply(lambda x: str(aggregate_id) in x.split(',')), 
                                   'location_id'].tolist()
         subdf = df[df['location_id'].isin(child_ids)].copy()
-        subdf = _drop_last_day(subdf, len(child_ids))
-        subdf = subdf.groupby(['Date'], as_index=False).sum()
-        subdf['location_id'] = aggregate_id
-        agg_dfs.append(subdf)
+        if not subdf.empty:
+            subdf = _drop_last_day(subdf, len(child_ids))
+            subdf = subdf.groupby(['Date'], as_index=False).sum()
+            subdf['location_id'] = aggregate_id
+            agg_dfs.append(subdf)
     agg_df = pd.concat(agg_dfs, ignore_index=True)
     return agg_df
 
 
-def compute_location_aggregates_data(df: pd.DataFrame, hierarchy: pd.DataFrame, 
-                                     aggregates: List[Location] = AGGREGATE_LOCATIONS,
+def compute_location_aggregates_data(df: pd.DataFrame, hierarchy: pd.DataFrame, aggregates: List[Location],
                                      rate_cols: List[str] = ['Confirmed case rate', 'Death rate', 'Predicted death rate (CFR)',
                                                              'Hospitalization rate', 'Predicted death rate (HFR)']) -> pd.DataFrame:
     """
@@ -71,18 +70,21 @@ def compute_location_aggregates_data(df: pd.DataFrame, hierarchy: pd.DataFrame,
         child_ids = hierarchy.loc[hierarchy['path_to_top_parent'].apply(lambda x: str(aggregate_id) in x.split(',')), 
                                   'location_id'].tolist()
         subdf = df[df['location_id'].isin(child_ids)].copy().assign(location_id=aggregate_id, location_name=aggregate_name)
-
-        group_cols = ['Date', 'location_name', 'location_id']
-        # groupby.sum doesn't support skipna option, so we propagate nans via
-        # dataframe.sum
-        subdf['n_values'] = subdf.groupby('Date')['location_id'].transform('count')
-        subdf = subdf.loc[subdf['n_values'] == subdf['n_values'].max()]
-        del subdf['n_values']
-        subdf = subdf.groupby(group_cols).apply(pd.DataFrame.sum, skipna=False).drop(group_cols, axis=1, errors='ignore').reset_index()
-        agg_dfs.append(subdf)
+        if not subdf.empty:
+            group_cols = ['Date', 'location_name', 'location_id']
+            subdf = subdf.groupby(group_cols, as_index=False).agg(lambda x: x.sum(skipna=False))
+            # only keep dates with at least 95% of potential population
+            max_pop = subdf['population'].max()
+            subdf = subdf.loc[subdf['population'] >= max_pop * 0.95]
+            subdf[rate_cols] = subdf[rate_cols].divide(df['population'], axis=0)
+            subdf['population'] = max_pop
+            agg_dfs.append(subdf)
     agg_df = pd.concat(agg_dfs, ignore_index=True)
-
-    agg_df[rate_cols] = agg_df[rate_cols].divide(agg_df['population'], axis=0)
+    
+    for rate_col in rate_cols:
+        agg_df = (agg_df.groupby('location_id', as_index=False)
+                  .apply(lambda x: fill_dates(x, rate_col))
+                  .reset_index(drop=True))
 
     return agg_df
 
@@ -129,3 +131,27 @@ def get_agg_hierarchy(hierarchy: pd.DataFrame):
                                                                       'location_name'].item()))
     
     return hierarchy, agg_locations
+
+
+def get_sorted_hierarchy_w_aggs(hierarchy: pd.DataFrame, agg_locations: collections.namedtuple) -> pd.DataFrame:
+    plot_hierarchy = hierarchy.sort_values(['sort_order', 'location_id']).reset_index(drop=True)
+    for agg_location_id, agg_location_name in agg_locations:
+        sort_order = plot_hierarchy.loc[plot_hierarchy['path_to_top_parent']
+                                        .apply(lambda x: str(agg_location_id) in x.split(',')), 
+                                        'sort_order'].min()
+        sort_order -= 0.01
+        plot_hierarchy = (plot_hierarchy
+                          .append(pd.DataFrame({'location_id': agg_location_id,
+                                                'location_name': agg_location_name,
+                                                'path_to_top_parent': '',
+                                                'sort_order': sort_order},
+                                               index=[0])))
+    plot_hierarchy.loc[plot_hierarchy['location_id'] == 1, 'sort_order'] = 0
+    
+    
+    plot_hierarchy_neg = plot_hierarchy.copy()
+    plot_hierarchy_neg['location_id'] = -plot_hierarchy_neg['location_id']
+    plot_hierarchy = plot_hierarchy.append(plot_hierarchy_neg)
+    plot_hierarchy = plot_hierarchy.sort_values(['sort_order', 'location_id']).reset_index(drop=True)
+    
+    return plot_hierarchy

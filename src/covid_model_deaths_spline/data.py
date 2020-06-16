@@ -185,3 +185,7 @@ def fill_dates(df: pd.DataFrame, interp_var: str = None) -> pd.DataFrame:
     df = df.fillna(method='pad')
 
     return df
+
+
+def apply_parent_model():
+    pass

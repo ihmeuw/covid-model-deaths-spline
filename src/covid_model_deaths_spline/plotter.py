@@ -154,7 +154,7 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame, plot_
     df = df.copy()
     floor = 0.01 / df['population'].values[0]
     for input_var in ['Death rate', 'Predicted death rate (CFR)', 'Predicted death rate (HFR)']:
-        df[input_var][1:] = np.diff(df['Death rate'])
+        df[input_var][1:] = np.diff(df[input_var])
         df.loc[df[input_var] < floor, input_var] = floor
     
     # plot
@@ -180,8 +180,14 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame, plot_
                   np.log(df['Predicted death rate (HFR)']),
                   **hfr_lines)
     ##
-
-    fig.suptitle(df['location_name'].values[0], y=1.0025, fontsize=24)
+    
+    location_name = df.loc[~df['location_name'].isnull(), 'location_name'].values
+    if location_name.size > 0:
+        plot_label = location_name[0]
+    else:
+        plot_label = df.loc[~df['location_id'].isnull(), 'location_id'].values[0]
+        plot_label = f'location_id: {plot_label}'
+    fig.suptitle(plot_label, y=1.0025, fontsize=24)
     fig.tight_layout()
     if plot_file:
         fig.savefig(plot_file, bbox_inches='tight')

@@ -56,7 +56,6 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
         ['Confirmed case rate', 'Hospitalization rate', 'Death rate']
     )
     model_data = model_data.append(agg_model_data).reset_index(drop=True)
-    del agg_model_data
     
     logger.debug("Filter cases/hospitalizations based on threshold.")
     model_data, no_cases_locs, no_hosp_locs = data.filter_to_epi_threshold(hierarchy, model_data)
@@ -109,10 +108,35 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     for result_path in results_path.iterdir():
         with result_path.open('rb') as result_file:
             results.append(pickle.load(result_file))
-    model_data = pd.concat([r['model_data'] for r in results]).reset_index(drop=True)
+    post_model_data = pd.concat([r['model_data'] for r in results]).reset_index(drop=True)
     noisy_draws = pd.concat([r['noisy_draws'] for r in results]).reset_index(drop=True)
     smooth_draws = pd.concat([r['smooth_draws'] for r in results]).reset_index(drop=True)
-
+    failed_model_locations = (model_data
+                              .loc[~model_data['location_id'].isin(post_model_data['location_id'].to_list()), 
+                                   'location_id']
+                              .unique().tolist())
+    failed_model_locations = [l for l in failed_model_locations if l in hierarchy['location_id'].to_list()]
+    model_data = post_model_data.append(model_data.loc[model_data['location_id'].isin(failed_model_locations)])
+    
+    logger.debug("Fill failed model locations with parent and plot them.")
+    hierarchy
+    smooth_draws
+    model_data
+    
+    failed_hierarchy = hierarchy.loc[hierarchy['location_id'].isin(failed_model_locations)].reset_index(drop=True)
+    failed_hierarchy['parent_id'] = failed_hierarchy['path_to_top_parent'].apply(lambda x: int(x.split(',')[-2]))
+    swip_swap = list(zip(failed_hierarchy['location_id'], failed_hierarchy['parent_id']))
+    
+    filled_draws = []
+    for child_id, parent_id in swip_swap:
+        print(child_id, parent_id)
+        draws = smooth_draws.loc[smooth_draws['location_id'] == parent_id]
+        draws['location_id'] = child_id
+        draws = draws.set_index(['location_id', 'date'])
+        draws /= model_data.loc[model_data['location_id'] == parent_id, 'population'].values[0]
+        draws *= model_data.loc[model_data['location_id'] == child_id, 'population'].values[0]
+        filled_draws.append(draws.reset_index())
+        
     logger.debug("Make aggregate(s) and plot them.")
     agg_model_data = aggregate.compute_location_aggregates_data(model_data, hierarchy, agg_locations)
     agg_model_data['location_id'] = -agg_model_data['location_id']
@@ -125,7 +149,11 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     summarize.summarize_and_plot(agg_draw_df, agg_model_data, str(plot_dir), obs_var=obs_var, spline_vars=spline_vars)
 
     logger.debug("Compiling plots.")
-    pdf_merger.pdf_merger(indir=plot_dir, outfile=str(output_root / 'model_results.pdf'))
+    plot_hierarchy = aggregate.get_sorted_hierarchy_w_aggs(hierarchy, agg_locations)
+    possible_pdfs = [f'{l}.pdf' for l in plot_hierarchy.location_id]
+    existing_pdfs = [str(x).split('/')[-1] for x in plot_dir.iterdir() if x.is_file()]
+    pdfs = [f'{plot_dir}/{pdf}' for pdf in possible_pdfs if pdf in existing_pdfs]
+    pdf_merger.pdf_merger(pdfs=pdfs, outfile=str(output_root / 'model_results.pdf'))
 
     logger.debug("Writing output data.")
     model_data = model_data.rename(columns={'Date': 'date'}).set_index(['location_id', 'date'])

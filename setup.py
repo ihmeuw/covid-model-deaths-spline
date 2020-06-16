@@ -28,7 +28,8 @@ if __name__ == "__main__":
         'pyyaml',
         'ipython',
         'jupyter',
-        'jupyterlab'
+        'jupyterlab',
+        'db_queries'
     ]
 
     test_requirements = [

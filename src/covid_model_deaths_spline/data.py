@@ -218,7 +218,8 @@ def apply_parents(failed_model_locations: List[int], hierarchy: pd.DataFrame,
         parent_name = model_data.loc[model_data['location_id'] == parent_id, 'location_name'].values[0]
         child_name = model_data.loc[model_data['location_id'] == child_id, 'location_name'].values[0]
         model_data.loc[model_data['location_id'] == child_id, 'location_name'] = f'{child_name} (using {parent_name} model)'
-    filled_draws = pd.concat(filled_draws)
-    smooth_draws = smooth_draws.append(filled_draws)
+    if filled_draws:
+        filled_draws = pd.concat(filled_draws)
+        smooth_draws = smooth_draws.append(filled_draws)
         
     return smooth_draws, model_data

@@ -12,10 +12,6 @@ import yaml
 from covid_model_deaths_spline.mr_spline import SplineFit
 
 
-def cfr_death_threshold(data: pd.DataFrame) -> int:
-    return max(1, int((data['Death rate'] * data['population']).max() * 0.01))
-
-
 def cfr_model(location_id: int,
               data: pd.DataFrame,
               daily: bool,
@@ -25,7 +21,6 @@ def cfr_model(location_id: int,
               model_type: str, **_) -> pd.DataFrame:
     # set up model
     df = data[data.location_id == location_id]
-    deaths_threshold = cfr_death_threshold(df)
 
     # add intercept
     df['intercept'] = 1
@@ -53,13 +48,9 @@ def cfr_model(location_id: int,
 
     # lose NAs in deaths as well for modeling
     mod_df = df.copy()
-    #above_thresh = (mod_df[dep_var] * df['population']) >= deaths_threshold
-    #has_x = (mod_df[spline_var] * df['population']) >= 1
     non_na = ~mod_df[adj_vars[dep_var]].isnull()
-    #max_1week_of_zeros_dep = (mod_df[dep_var][::-1] == 0).cumsum()[::-1] <= 7
     max_1week_of_zeros_spline = (mod_df[spline_var][::-1] == 0).cumsum()[::-1] <= 7
-    #mod_df = mod_df.loc[above_thresh & has_x & non_na, ['intercept'] + list(adj_vars.values())].reset_index(drop=True)
-    mod_df = mod_df.loc[non_na & max_1week_of_zeros_spline,  # max_1week_of_zeros_dep
+    mod_df = mod_df.loc[non_na & max_1week_of_zeros_spline,
                         ['intercept'] + list(adj_vars.values())].reset_index(drop=True)
 
     # run model and predict

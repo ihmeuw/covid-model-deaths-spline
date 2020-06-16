@@ -166,8 +166,9 @@ def filter_to_epi_threshold(hierarchy: pd.DataFrame,
     days_w_hosp = df['Hospitalization rate'].notnull().groupby(df['location_id']).sum()
     no_hosp_locs = days_w_hosp[days_w_hosp == 0].index.to_list()
 
-    df = check_counts(df, 'Death rate', 'drop', threshold)
-    dropped_locations = set(hierarchy['location_id']).difference(df['location_id'])
+    #df = check_counts(df, 'Death rate', 'drop', threshold)
+    #dropped_locations = set(hierarchy['location_id']).difference(df['location_id'])
+    dropped_locations = set()
 
     if dropped_locations:
         logger.warning(f"Dropped {sorted(list(dropped_locations))} from data due to lack of cases or deaths.")

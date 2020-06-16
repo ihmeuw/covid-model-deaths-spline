@@ -29,7 +29,8 @@ def compute_location_aggregates_draws(df: pd.DataFrame, hierarchy: pd.DataFrame,
     """
     agg_dfs = []
     for aggregate_id, _aggregate_name in aggregates:
-        child_ids = hierarchy.loc[hierarchy.path_to_top_parent.str.contains(f'{aggregate_id},'), 'location_id'].tolist()
+        child_ids = hierarchy.loc[hierarchy['path_to_top_parent'].apply(lambda x: str(aggregate_id) in x.split(',')), 
+                                  'location_id'].tolist()
         subdf = df[df['location_id'].isin(child_ids)].copy()
         subdf = _drop_last_day(subdf, len(child_ids))
         subdf = subdf.groupby(['Date'], as_index=False).sum()
@@ -67,7 +68,8 @@ def compute_location_aggregates_data(df: pd.DataFrame, hierarchy: pd.DataFrame,
 
     agg_dfs = []
     for aggregate_id, aggregate_name in aggregates:
-        child_ids = hierarchy.loc[hierarchy['path_to_top_parent'].str.contains(f'{aggregate_id},'), 'location_id'].tolist()
+        child_ids = hierarchy.loc[hierarchy['path_to_top_parent'].apply(lambda x: str(aggregate_id) in x.split(',')), 
+                                  'location_id'].tolist()
         subdf = df[df['location_id'].isin(child_ids)].copy().assign(location_id=aggregate_id, location_name=aggregate_name)
 
         group_cols = ['Date', 'location_name', 'location_id']
@@ -105,10 +107,12 @@ def get_agg_hierarchy(hierarchy: pd.DataFrame):
     gbd_hierarchy = get_location_metadata(location_set_id=35, gbd_round_id=6)
     gbd_hierarchy = gbd_hierarchy.loc[gbd_hierarchy['level'] <= 3].reset_index(drop=True)
     gbd_hierarchy = gbd_hierarchy.rename(index=str, columns={'location_id':'top_parent'})
-    hierarchy = hierarchy.merge(gbd_hierarchy[['top_parent', 'region_id']], how='left')
+    hierarchy = hierarchy.merge(gbd_hierarchy[['top_parent', 'level', 'region_id', 'sort_order']], how='left')
     hierarchy['region_id'] = hierarchy['region_id'].astype(int)
+    if (hierarchy['level'] != 3).any():
+        raise ValueError('Non level 3 parent in hierarchy.')
     hierarchy['path_to_top_parent'] = hierarchy['region_id'].astype(str) + ',' + hierarchy['path_to_top_parent']
-    hierarchy = hierarchy.drop(['region_id', 'top_parent'], axis=1)
+    hierarchy = hierarchy.drop(['top_parent', 'level', 'region_id'], axis=1)
     hierarchy['path_to_top_parent'] = '1,' + hierarchy['path_to_top_parent']
     
     # countries with subnats

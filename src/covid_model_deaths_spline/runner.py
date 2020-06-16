@@ -58,8 +58,8 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     model_data = model_data.append(agg_model_data).reset_index(drop=True)
     del agg_model_data
     
-    logger.debug("Filter based on threshold.")
-    model_data, no_cases_locs, no_hosp_locs = data.filter_to_epi_threshold(hierarchy, model_data, 3)
+    logger.debug("Filter cases/hospitalizations based on threshold.")
+    model_data, no_cases_locs, no_hosp_locs = data.filter_to_epi_threshold(hierarchy, model_data)
 
     logger.debug("Preparing model settings.")
     model_settings = {}

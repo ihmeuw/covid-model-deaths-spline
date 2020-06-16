@@ -118,7 +118,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     agg_model_data['location_name'] = agg_model_data['location_name'] + ' (model aggregate)'
     agg_draw_df = aggregate.compute_location_aggregates_draws(smooth_draws.rename(columns={'date': 'Date'}),
                                                               hierarchy, agg_locations)
-    agg_model_data['location_id'] = -agg_model_data['location_id']
+    agg_draw_df['location_id'] = -agg_draw_df['location_id']
     obs_var = smoother_settings['obs_var']
     spline_vars = smoother_settings['spline_vars']
     summarize.summarize_and_plot(agg_draw_df, agg_model_data, str(plot_dir), obs_var=obs_var, spline_vars=spline_vars)

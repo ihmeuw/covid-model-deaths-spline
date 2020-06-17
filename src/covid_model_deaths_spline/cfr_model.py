@@ -77,7 +77,6 @@ def cfr_model(location_id: int,
                 n_i_knots=n_i_knots,
                 spline_options=spline_options,
                 scale_se=True,
-                #scale_se_power=0.5,
                 scale_se_floor_pctile=last_days_pctile
             )
             mr_model.fit_model()

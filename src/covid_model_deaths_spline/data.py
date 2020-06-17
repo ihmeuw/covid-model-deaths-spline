@@ -85,12 +85,12 @@ def get_death_data(full_data: pd.DataFrame) -> pd.DataFrame:
     return death_df
 
 
-def get_population_data(full_data: pd.DataFrame) -> pd.DataFrame:
+def get_population_data(input_root: Path, hierarchy: pd.DataFrame) -> pd.DataFrame:
     """Filter and clean population data."""
-    pop_df = full_data[['location_id', 'population']].drop_duplicates()
-    non_na = ~pop_df['population'].isnull()
-    pop_df = pop_df.loc[non_na]
-    pop_df = pop_df.reset_index(drop=True)
+    pop_df = pd.read_csv(input_root / 'age_pop.csv')
+    pop_df = pop_df.groupby('location_id', as_index=False)['population'].sum()
+    pop_df = hierarchy[['location_id', 'location_name']].merge(pop_df)
+    
     return pop_df
 
 
@@ -202,18 +202,20 @@ def fill_dates(df: pd.DataFrame, interp_var: str = None) -> pd.DataFrame:
 
 
 def apply_parents(failed_model_locations: List[int], hierarchy: pd.DataFrame, 
-                  smooth_draws: pd.DataFrame, model_data: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:    
+                  smooth_draws: pd.DataFrame, model_data: pd.DataFrame, 
+                  pop_data: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:    
     failed_hierarchy = hierarchy.loc[hierarchy['location_id'].isin(failed_model_locations)].reset_index(drop=True)
     failed_hierarchy['parent_id'] = failed_hierarchy['path_to_top_parent'].apply(lambda x: int(x.split(',')[-2]))
     swip_swap = list(zip(failed_hierarchy['location_id'], failed_hierarchy['parent_id']))
     
     filled_draws = []
     for child_id, parent_id in swip_swap:
+        print(child_id, parent_id)
         draws = smooth_draws.loc[smooth_draws['location_id'] == parent_id]
         draws['location_id'] = child_id
         draws = draws.set_index(['location_id', 'date'])
         draws /= model_data.loc[model_data['location_id'] == parent_id, 'population'].values[0]
-        draws *= model_data.loc[model_data['location_id'] == child_id, 'population'].values[0]
+        draws *= pop_data.loc[pop_data['location_id'] == child_id, 'population'].item()
         filled_draws.append(draws.reset_index())
         parent_name = model_data.loc[model_data['location_id'] == parent_id, 'location_name'].values[0]
         child_name = model_data.loc[model_data['location_id'] == child_id, 'location_name'].values[0]

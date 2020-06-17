@@ -5,6 +5,7 @@ from covid_shared import shell_tools, cli_tools
 import dill as pickle
 from loguru import logger
 import pandas as pd
+import numpy as np
 import yaml
 
 from covid_model_deaths_spline import data, models, pdf_merger, cluster, summarize, aggregate
@@ -24,12 +25,13 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
 
     logger.debug("Loading and cleaning data.")
     hierarchy = data.load_most_detailed_locations(input_root)
+    hierarchy = hierarchy.loc[~hierarchy['location_id'].isin([60892, 60893, 7])]
     agg_hierarchy = data.load_aggregate_locations(input_root)
     full_data = data.load_full_data(input_root)
     case_data = data.get_shifted_data(full_data, 'Confirmed', 'Confirmed case rate')
     hosp_data = data.get_shifted_data(full_data, 'Hospitalizations', 'Hospitalization rate')
     death_data = data.get_death_data(full_data)
-    pop_data = data.get_population_data(full_data)
+    pop_data = data.get_population_data(input_root, hierarchy)
 
     logger.debug("Data manipulation")
     case_data, hosp_data, death_data, manipulation_metadata = data.evil_doings(case_data, hosp_data, death_data)
@@ -114,21 +116,24 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     post_model_data = pd.concat([r['model_data'] for r in results]).reset_index(drop=True)
     noisy_draws = pd.concat([r['noisy_draws'] for r in results]).reset_index(drop=True)
     smooth_draws = pd.concat([r['smooth_draws'] for r in results]).reset_index(drop=True)
-    parent_model_locations = (model_data
-                              .loc[~model_data['location_id'].isin(post_model_data['location_id'].to_list()), 
+    parent_model_locations = (hierarchy
+                              .loc[~hierarchy['location_id'].isin(post_model_data['location_id'].to_list()), 
                                    'location_id']
-                              .unique().tolist())
-    parent_model_locations = [l for l in parent_model_locations if l in hierarchy['location_id'].to_list()]
+                              .tolist())
     for location_id in [175, 189]:  # Burundi, Tanzania
         if location_id in hierarchy['location_id'].to_list() and not location_id in parent_model_locations:
             parent_model_locations += [location_id]
     app_metadata.update({'parent_model_locations': parent_model_locations})
+    post_model_data = post_model_data.loc[~post_model_data['location_id'].isin(parent_model_locations)]
+    noisy_draws = noisy_draws.loc[~noisy_draws['location_id'].isin(parent_model_locations)]
+    smooth_draws = smooth_draws.loc[~smooth_draws['location_id'].isin(parent_model_locations)]
     model_data = post_model_data.append(model_data.loc[model_data['location_id'].isin(parent_model_locations)])
     obs_var = smoother_settings['obs_var']
     spline_vars = smoother_settings['spline_vars']
     
     logger.debug("Fill failed model locations with parent and plot them.")
-    smooth_draws, model_data = data.apply_parents(parent_model_locations, hierarchy, smooth_draws, model_data)
+    smooth_draws, model_data = data.apply_parents(parent_model_locations, hierarchy, smooth_draws, 
+                                                  model_data, pop_data)
     summarize.summarize_and_plot(
         smooth_draws.loc[smooth_draws['location_id'].isin(parent_model_locations)].rename(columns={'date': 'Date'}),
         model_data.loc[model_data['location_id'].isin(parent_model_locations)],

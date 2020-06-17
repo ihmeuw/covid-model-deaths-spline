@@ -66,6 +66,7 @@ def cfr_model(location_id: int,
     # run model
     prediction_pending = True
     n_i_knots = 6
+    last_days_pctile = min(0.05, 5 / len(mod_df))
     while prediction_pending:
         try:
             mr_model = SplineFit(
@@ -75,7 +76,9 @@ def cfr_model(location_id: int,
                 indep_vars=['intercept'] + list(map(adj_vars.get, indep_vars)),
                 n_i_knots=n_i_knots,
                 spline_options=spline_options,
-                scale_se=True
+                scale_se=True,
+                #scale_se_power=0.5,
+                scale_se_floor_pctile=last_days_pctile
             )
             mr_model.fit_model()
             prediction = mr_model.predict(df)

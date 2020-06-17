@@ -210,7 +210,6 @@ def apply_parents(failed_model_locations: List[int], hierarchy: pd.DataFrame,
     
     filled_draws = []
     for child_id, parent_id in swip_swap:
-        print(child_id, parent_id)
         draws = smooth_draws.loc[smooth_draws['location_id'] == parent_id]
         draws['location_id'] = child_id
         draws = draws.set_index(['location_id', 'date'])

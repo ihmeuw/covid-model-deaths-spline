@@ -22,7 +22,7 @@ def get_plot_idx(i: int, n_vars: int):
 def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame, plot_file: str = None):
     # set up plot
     sns.set_style('whitegrid')
-    n_cols = len(plot_vars)
+    n_cols = max(len(plot_vars), 1)
     n_rows = 3
     widths = [1] * n_cols
     if n_cols < 3:
@@ -167,12 +167,13 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame, plot_
              color='firebrick', linestyle='--', linewidth=3)
     ax_draws.set_ylabel('ln(daily death rate)', fontsize=14)
     ax_draws.set_xlabel('Date', fontsize=14)
-    ax_draws.plot(df['Date'],
-                  np.log(df['Death rate']),
-                  **raw_lines)
-    ax_draws.scatter(df['Date'],
-                     np.log(df['Death rate']),
-                     **raw_points)
+    if any(~df['Death rate'].isnull()):
+        ax_draws.plot(df['Date'],
+                      np.log(df['Death rate']),
+                      **raw_lines)
+        ax_draws.scatter(df['Date'],
+                         np.log(df['Death rate']),
+                         **raw_points)
     ax_draws.plot(df['Date'],
                   np.log(df['Predicted death rate (CFR)']),
                   **cfr_lines)

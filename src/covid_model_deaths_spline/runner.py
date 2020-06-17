@@ -137,7 +137,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     summarize.summarize_and_plot(
         smooth_draws.loc[smooth_draws['location_id'].isin(parent_model_locations)].rename(columns={'date': 'Date'}),
         model_data.loc[model_data['location_id'].isin(parent_model_locations)],
-        str(plot_dir), obs_var=obs_var, spline_vars=spline_vars
+        str(plot_dir), obs_var=obs_var, spline_vars=spline_vars, pop_data=pop_data
     )
         
     logger.debug("Make post-model aggregates and plot them.")

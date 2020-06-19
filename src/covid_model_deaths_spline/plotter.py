@@ -167,13 +167,18 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame,
     # plot draws
     ax_draws = fig.add_subplot(gs[2:, 0:])
     for model_label, draw_range in zip(model_labels, draw_ranges):
+        # submodel draws
         doy = model_label[model_label.find('(') + 1:model_label.find(')')]
         ax_draws.plot(draw_df['Date'],
                       draw_df[[f'draw_{d}' for d in range(*draw_range)]],
                       color=DOY_COLORS[doy], alpha=0.05)
+    for model_label, draw_range in zip(model_labels, draw_ranges):
+        # submodel means
+        doy = model_label[model_label.find('(') + 1:model_label.find(')')]
         ax_draws.plot(draw_df['Date'],
-                 draw_df[draw_cols].mean(axis=1),
-                 color=DOY_COLORS[doy], linewidth=3, label=model_label)
+                      draw_df[[f'draw_{d}' for d in range(*draw_range)]],
+                      color=DOY_COLORS[doy], linewidth=3, label=model_label)
+    # overall mean
     ax_draws.plot(draw_df['Date'],
              draw_df[draw_cols].mean(axis=1),
              color='black', linestyle='--', linewidth=3)

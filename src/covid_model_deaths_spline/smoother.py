@@ -34,7 +34,7 @@ def run_smoothing_model(mod_df: pd.DataFrame, n_i_knots: int, spline_options: Di
         ensemble_knots=ensemble_knots,
         scale_se=scale_se,
         observed_var='observed',
-        pseudo_se_multiplier=1.25
+        pseudo_se_multiplier=2.
     )
     mr_model.fit_model()
     smooth_y = mr_model.predict(pred_df)
@@ -119,7 +119,7 @@ def get_limits(y: np.array) -> np.array:
 
 
 def combine_cumul_daily(from_cumul: np.array, from_daily: np.array, 
-                        total_deaths: float, ceiling: float = 100.) -> np.array:
+                        total_deaths: float, ceiling: float = 50.) -> np.array:
     # convert cumulative to daily (replace first day with first estimate)
     from_cumul = np.exp(from_cumul.copy())
     from_cumul[1:] = np.diff(from_cumul, axis=0)
@@ -216,7 +216,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
         ln_cumul_mod_df, n_i_knots, ln_cumul_spline_options, False, pred_df, ensemble_knots
     )
 
-    # average the two in linear daily (increasing influence of daily as we get closer to 100), then log
+    # average the two in linear daily (increasing influence of daily as we get closer to ceiling), then log
     smooth_y = combine_cumul_daily(ln_cumul_smooth_y, ln_daily_smooth_y, total_deaths)
     smooth_y_insample = combine_cumul_daily(
         pd.pivot_table(ln_cumul_mod_df, index='x', columns='data_type', values='smooth_y').values, 
@@ -275,22 +275,27 @@ def synthesize_time_series(location_id: int,
     # location data
     df = data[data.location_id == location_id]
 
-    # spline on output (first determine space based on number of deaths)
+    # spline on deaths time series
     total_deaths = (df['Death rate'] * df['population']).max()
-    if len(df) >= 30 and total_deaths > 10:
-        n_i_knots = 5
-    elif len(df) >= 15 and total_deaths > 5:
-        n_i_knots = 4
-    else:
-        n_i_knots = 3
-    noisy_draws, smooth_draws, best_settings = smoother(
-        df=df.copy(),
-        obs_var=obs_var,
-        pred_vars=pred_vars,
-        n_i_knots=n_i_knots,
-        n_draws=n_draws,
-        total_deaths=total_deaths
-    )
+    draws_pending = True
+    n_i_knots = 6
+    while draws_pending:
+        try:
+            noisy_draws, smooth_draws, best_settings = smoother(
+                df=df.copy(),
+                obs_var=obs_var,
+                pred_vars=pred_vars,
+                n_i_knots=n_i_knots,
+                n_draws=n_draws,
+                total_deaths=total_deaths
+            )
+            draws_pending = False
+        except:
+            print(f'Synthesis spline failed with {n_i_knots} knots.')
+        if n_i_knots == 1:
+            draws_pending = False
+        else:
+            n_i_knots -= 1
     draw_cols = [col for col in noisy_draws.columns if col.startswith('draw_')]
     df = summarize.append_summary_statistics(smooth_draws, df)
     

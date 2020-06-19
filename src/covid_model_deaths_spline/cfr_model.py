@@ -12,10 +12,6 @@ import yaml
 from covid_model_deaths_spline.mr_spline import SplineFit
 
 
-def cfr_death_threshold(data: pd.DataFrame) -> int:
-    return max(1, int((data['Death rate'] * data['population']).max() * 0.01))
-
-
 def cfr_model(location_id: int,
               data: pd.DataFrame,
               daily: bool,
@@ -25,7 +21,6 @@ def cfr_model(location_id: int,
               model_type: str, **_) -> pd.DataFrame:
     # set up model
     df = data[data.location_id == location_id]
-    deaths_threshold = cfr_death_threshold(df)
 
     # add intercept
     df['intercept'] = 1
@@ -53,21 +48,13 @@ def cfr_model(location_id: int,
 
     # lose NAs in deaths as well for modeling
     mod_df = df.copy()
-    above_thresh = (mod_df[dep_var] * df['population']) >= deaths_threshold
-    has_x = (mod_df[spline_var] * df['population']) >= 1
     non_na = ~mod_df[adj_vars[dep_var]].isnull()
-    mod_df = mod_df.loc[above_thresh & has_x & non_na, ['intercept'] + list(adj_vars.values())].reset_index(drop=True)
-    if len(mod_df) < 3:
-        raise ValueError(f"Fewer than 3 days with deaths {df['location_name'][0]}")
+    max_1week_of_zeros_spline = (mod_df[spline_var][::-1] == 0).cumsum()[::-1] <= 7
+    mod_df = mod_df.loc[non_na & max_1week_of_zeros_spline,
+                        ['intercept'] + list(adj_vars.values())].reset_index(drop=True)
 
     # run model and predict
-    if len(mod_df) >= 25:
-        n_i_knots = 5
-    elif len(mod_df) >= 20:
-        n_i_knots = 4
-    else:
-        n_i_knots = 3
-    spline_options={
+    spline_options = {
         'spline_knots_type': 'frequency',
         'spline_degree': 3,
         'spline_r_linear':True,
@@ -75,17 +62,38 @@ def cfr_model(location_id: int,
     }
     if not daily:
         spline_options.update({'prior_spline_monotonicity':'increasing'})
-    mr_model = SplineFit(
-        data=mod_df,
-        dep_var=adj_vars[dep_var],
-        spline_var=adj_vars[spline_var],
-        indep_vars=['intercept'] + list(map(adj_vars.get, indep_vars)),
-        n_i_knots=n_i_knots,
-        spline_options=spline_options,
-        scale_se=False
-    )
-    mr_model.fit_model()
-    df['Predicted model death rate'] = mr_model.predict(df)
+        
+    # run model
+    prediction_pending = True
+    n_i_knots = 6
+    last_days_pctile = min(0.05, 5 / len(mod_df))
+    while prediction_pending:
+        try:
+            mr_model = SplineFit(
+                data=mod_df,
+                dep_var=adj_vars[dep_var],
+                spline_var=adj_vars[spline_var],
+                indep_vars=['intercept'] + list(map(adj_vars.get, indep_vars)),
+                n_i_knots=n_i_knots,
+                spline_options=spline_options,
+                scale_se=True,
+                scale_se_floor_pctile=last_days_pctile
+            )
+            mr_model.fit_model()
+            prediction = mr_model.predict(df)
+            if not np.isnan(prediction).any():
+                prediction_pending = False
+            else:
+                print(f'Elasticity model failed with {n_i_knots} knots (nans).')
+        except:
+            print(f'Elasticity model failed with {n_i_knots} knots (error).')
+        if n_i_knots == 1:
+            prediction_pending = False
+        else:
+            n_i_knots -= 1
+    
+    # attach prediction
+    df['Predicted model death rate'] = prediction
     df[f'Predicted death rate ({model_type})'] = df['Predicted model death rate']
     if log:
         df[f'Predicted death rate ({model_type})'] = np.exp(df[f'Predicted death rate ({model_type})'])

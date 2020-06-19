@@ -22,7 +22,7 @@ def get_plot_idx(i: int, n_vars: int):
 def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame, plot_file: str = None):
     # set up plot
     sns.set_style('whitegrid')
-    n_cols = len(plot_vars)
+    n_cols = max(len(plot_vars), 1)
     n_rows = 3
     widths = [1] * n_cols
     if n_cols < 3:
@@ -143,16 +143,21 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame, plot_
         **smoothed_pred_area
     )
     
-    # smoothed draws - ln(rate)
+    ## smoothed draws - ln(rate)
+    # format draws
     draw_df = draw_df.copy()
     draw_cols = [col for col in draw_df.columns if col.startswith('draw_')]
     draw_df.iloc[1:][draw_cols] = np.diff(draw_df[draw_cols], axis=0)
     draw_df[draw_cols] = np.log(draw_df[draw_cols])
+    
+    # format model inputs
     df = df.copy()
-    df['Death rate'][1:] = np.diff(df['Death rate'])
     floor = 0.01 / df['population'].values[0]
-    df.loc[df['Death rate'] < floor, 'Death rate'] = floor
-    #plt.subplot(int(f'{n_rows}{1}{n_rows}'))
+    for input_var in ['Death rate', 'Predicted death rate (CFR)', 'Predicted death rate (HFR)']:
+        df[input_var][1:] = np.diff(df[input_var])
+        df.loc[df[input_var] < floor, input_var] = floor
+    
+    # plot
     ax_draws = fig.add_subplot(gs[2:, 0:])
     ax_draws.plot(draw_df['Date'],
              draw_df[draw_cols],
@@ -162,14 +167,28 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame, plot_
              color='firebrick', linestyle='--', linewidth=3)
     ax_draws.set_ylabel('ln(daily death rate)', fontsize=14)
     ax_draws.set_xlabel('Date', fontsize=14)
+    if any(~df['Death rate'].isnull()):
+        ax_draws.plot(df['Date'],
+                      np.log(df['Death rate']),
+                      **raw_lines)
+        ax_draws.scatter(df['Date'],
+                         np.log(df['Death rate']),
+                         **raw_points)
     ax_draws.plot(df['Date'],
-                  np.log(df['Death rate']),
-                        **raw_lines)
-    ax_draws.scatter(df['Date'],
-                     np.log(df['Death rate']),
-                     **raw_points)
-
-    fig.suptitle(df['location_name'].values[0], y=1.0025, fontsize=24)
+                  np.log(df['Predicted death rate (CFR)']),
+                  **cfr_lines)
+    ax_draws.plot(df['Date'],
+                  np.log(df['Predicted death rate (HFR)']),
+                  **hfr_lines)
+    ##
+    
+    location_name = df.loc[~df['location_name'].isnull(), 'location_name'].values
+    if location_name.size > 0:
+        plot_label = location_name[0]
+    else:
+        plot_label = df.loc[~df['location_id'].isnull(), 'location_id'].values[0]
+        plot_label = f'location_id: {plot_label}'
+    fig.suptitle(plot_label, y=1.0025, fontsize=24)
     fig.tight_layout()
     if plot_file:
         fig.savefig(plot_file, bbox_inches='tight')

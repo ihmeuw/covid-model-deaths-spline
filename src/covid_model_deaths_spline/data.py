@@ -21,9 +21,21 @@ def load_most_detailed_locations(inputs_root: Path) -> pd.DataFrame:
     hierarchy = pd.read_csv(location_hierarchy_path)
 
     most_detailed = hierarchy['most_detailed'] == 1
-    keep_columns = ['location_id', 'location_name', 'path_to_top_parent']
+    keep_columns = ['location_id', 'location_name', 'path_to_top_parent', 'sort_order']
 
-    return hierarchy.loc[most_detailed, keep_columns]
+    return hierarchy.loc[most_detailed, keep_columns].sort_values('sort_order').reset_index(drop=True)
+
+
+def load_aggregate_locations(inputs_root: Path) -> pd.DataFrame:
+    """Loads the parent locations in the current modeling hierarchy (except global)."""
+    location_hierarchy_path = inputs_root / 'locations' / 'modeling_hierarchy.csv'
+    hierarchy = pd.read_csv(location_hierarchy_path)
+
+    aggregate = hierarchy['most_detailed'] == 0
+    not_global = hierarchy['location_id'] != 1
+    keep_columns = ['location_id', 'location_name', 'path_to_top_parent', 'sort_order']
+
+    return hierarchy.loc[aggregate & not_global, keep_columns].sort_values('sort_order').reset_index(drop=True)
 
 
 def load_full_data(inputs_root: Path) -> pd.DataFrame:
@@ -60,10 +72,11 @@ def get_shifted_data(full_data: pd.DataFrame, count_var: str, rate_var: str, shi
 
 def get_death_data(full_data: pd.DataFrame) -> pd.DataFrame:
     """Filter and clean death data."""
-    non_na = ~full_data['Death rate'].isnull()
-    has_deaths = full_data.groupby('location_id')['Death rate'].transform(max).astype(bool)
-    keep_columns = ['location_id', 'Date', 'Death rate']
-    death_df = full_data.loc[non_na & has_deaths, keep_columns].reset_index(drop=True)
+    non_na = ~full_data['Deaths'].isnull()
+    keep_columns = ['location_id', 'Date', 'Deaths', 'population']
+    death_df = full_data.loc[non_na, keep_columns].reset_index(drop=True)
+    death_df['Death rate'] = death_df['Deaths'] / death_df['population']
+    del death_df['population']
 
     death_df = (death_df.groupby('location_id', as_index=False)
                 .apply(lambda x: fill_dates(x, 'Death rate'))
@@ -72,10 +85,12 @@ def get_death_data(full_data: pd.DataFrame) -> pd.DataFrame:
     return death_df
 
 
-def get_population_data(full_data: pd.DataFrame) -> pd.DataFrame:
+def get_population_data(input_root: Path, hierarchy: pd.DataFrame) -> pd.DataFrame:
     """Filter and clean population data."""
-    pop_df = full_data[['location_id', 'population']].drop_duplicates()
-    pop_df = pop_df.reset_index(drop=True)
+    pop_df = pd.read_csv(input_root / 'age_pop.csv')
+    pop_df = pop_df.groupby('location_id', as_index=False)['population'].sum()
+    pop_df = hierarchy[['location_id', 'location_name']].merge(pop_df)
+    
     return pop_df
 
 
@@ -165,8 +180,9 @@ def filter_to_epi_threshold(hierarchy: pd.DataFrame,
     days_w_hosp = df['Hospitalization rate'].notnull().groupby(df['location_id']).sum()
     no_hosp_locs = days_w_hosp[days_w_hosp == 0].index.to_list()
 
-    df = check_counts(df, 'Death rate', 'drop', threshold)
-    dropped_locations = set(hierarchy['location_id']).difference(df['location_id'])
+    #df = check_counts(df, 'Death rate', 'drop', threshold)
+    #dropped_locations = set(hierarchy['location_id']).difference(df['location_id'])
+    dropped_locations = set()
 
     if dropped_locations:
         logger.warning(f"Dropped {sorted(list(dropped_locations))} from data due to lack of cases or deaths.")
@@ -181,5 +197,30 @@ def fill_dates(df: pd.DataFrame, interp_var: str = None) -> pd.DataFrame:
     if interp_var:
         df[interp_var] = df[interp_var].interpolate()
     df = df.fillna(method='pad')
-
+    df['location_id'] = df['location_id'].astype(int)
     return df
+
+
+def apply_parents(failed_model_locations: List[int], hierarchy: pd.DataFrame, 
+                  smooth_draws: pd.DataFrame, model_data: pd.DataFrame, 
+                  pop_data: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:    
+    failed_hierarchy = hierarchy.loc[hierarchy['location_id'].isin(failed_model_locations)].reset_index(drop=True)
+    failed_hierarchy['parent_id'] = failed_hierarchy['path_to_top_parent'].apply(lambda x: int(x.split(',')[-2]))
+    swip_swap = list(zip(failed_hierarchy['location_id'], failed_hierarchy['parent_id']))
+    
+    filled_draws = []
+    for child_id, parent_id in swip_swap:
+        draws = smooth_draws.loc[smooth_draws['location_id'] == parent_id]
+        draws['location_id'] = child_id
+        draws = draws.set_index(['location_id', 'date'])
+        draws /= model_data.loc[model_data['location_id'] == parent_id, 'population'].values[0]
+        draws *= pop_data.loc[pop_data['location_id'] == child_id, 'population'].item()
+        filled_draws.append(draws.reset_index())
+        parent_name = model_data.loc[model_data['location_id'] == parent_id, 'location_name'].values[0]
+        child_name = model_data.loc[model_data['location_id'] == child_id, 'location_name'].values[0]
+        model_data.loc[model_data['location_id'] == child_id, 'location_name'] = f'{child_name} (using {parent_name} model)'
+    if filled_draws:
+        filled_draws = pd.concat(filled_draws)
+        smooth_draws = smooth_draws.append(filled_draws)
+        
+    return smooth_draws, model_data

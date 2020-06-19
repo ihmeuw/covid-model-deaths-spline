@@ -80,7 +80,7 @@ class SplineFit:
             use_re=False,
             use_spline=True,
             **spline_options,
-            prior_spline_num_constraint_points=50,
+            prior_spline_num_constraint_points=100,
             spline_knots=ensemble_knots[0],
             name=spline_var
         )
@@ -107,7 +107,6 @@ class SplineFit:
             if np.diff([spline_data.min(), np.quantile(spline_data[observed], 0.05)]) > 1e-10:
                 n_intervals -= 1
                 k_start = 0.15
-            #
             if np.diff([np.quantile(spline_data[observed], 0.95), spline_data.max()]) > 1e-10:
                 n_intervals -= 1
                 k_end = 0.85

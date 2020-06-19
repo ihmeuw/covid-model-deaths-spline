@@ -12,15 +12,14 @@ import yaml
 from covid_model_deaths_spline.mr_spline import SplineFit
 
 
-def cfr_model(location_id: int,
-              data: pd.DataFrame,
+def cfr_model(df: pd.DataFrame,
               daily: bool,
               log: bool,
               dep_var: str, spline_var: str, indep_vars: List[str],
               model_dir: str, 
-              model_type: str, **_) -> pd.DataFrame:
+              model_type: str) -> pd.DataFrame:
     # set up model
-    df = data[data.location_id == location_id]
+    df = df.copy()
 
     # add intercept
     df['intercept'] = 1

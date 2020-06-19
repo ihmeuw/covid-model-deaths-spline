@@ -1,5 +1,4 @@
 import functools
-from itertools import compress
 import multiprocessing
 from pathlib import Path
 from typing import List, Dict, Tuple
@@ -10,9 +9,7 @@ import numpy as np
 import pandas as pd
 import tqdm
 
-from covid_model_deaths_spline import summarize
 from covid_model_deaths_spline.mr_spline import SplineFit, rescale_k
-from covid_model_deaths_spline.plotter import plotter
 
 
 def apply_floor(vals: np.array, floor_val: float) -> np.array:
@@ -102,7 +99,11 @@ def draw_cleanup(draws: np.array, smooth_y: np.array, x: np.array, df: pd.DataFr
     draws = draws.cumsum(axis=0)
 
     # store in dataframe
-    draw_df = df.loc[x, ['location_id', 'Date', 'population']].reset_index(drop=True)
+    draw_df = pd.DataFrame({
+        'location_id': df['location_id'].unique().item(),
+        'Date': [df['Date'].min() + pd.Timedelta(days=dx) for dx in x],
+        'population': df['population'].unique().item()
+    })
     draw_df = pd.concat([draw_df,
                          pd.DataFrame(draws, columns=[f'draw_{d}' for d in range(draws.shape[1])])], axis=1)
 
@@ -167,7 +168,7 @@ def find_best_settings(mr_model, spline_options):
 
 def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
              n_i_knots: int, n_draws: int, total_deaths: float,
-             floor_deaths: float = 0.01) -> Tuple[pd.DataFrame, pd.DataFrame]:
+             doy_holdout: int, floor_deaths: float = 0.01) -> Tuple[pd.DataFrame, pd.DataFrame]:
     # extract inputs
     df = df.sort_values('Date').reset_index(drop=True)
     floor = floor_deaths / df['population'][0]
@@ -190,10 +191,14 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     last_week['Deaths'] = last_week['Death rate'] * last_week['population']
     last_week['Deaths'][1:] = np.diff(last_week['Deaths'])
     last_week_deaths = last_week.loc[~last_week['Deaths'].isnull()].iloc[-7:]['Deaths'].sum()
-    gprior_se = max(1, last_week_deaths) / 100
+    gprior_se = max(1, last_week_deaths) / 10
 
+    # add on holdout days to prediction
+    x_pred = x.max() + np.arange(doy_holdout + 1)[1:]
+    x_pred = np.hstack([x, x_pred])
+    pred_df = pd.DataFrame({'intercept':1, 'x': x_pred})
+    
     # prepare data and run daily
-    pred_df = pd.DataFrame({'intercept':1, 'x': x})
     ln_daily_limits = get_limits(ln_daily_y[max_1week_of_zeros])
     ln_daily_mod_df, ln_daily_spline_options = process_inputs(
         y=ln_daily_y, col_names=[obs_var] + pred_vars,
@@ -237,7 +242,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
         pd.DataFrame({
             'y':nd,
             'intercept':1,
-            'x':x,
+            'x':x_pred,
             'observed':True
         })
         for nd in noisy_draws.T
@@ -257,8 +262,8 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     smooth_draws = np.vstack(smooth_draws).T
 
     # make pretty (in linear cumulative space)
-    noisy_draws = draw_cleanup(noisy_draws, smooth_y, x, df)
-    smooth_draws = draw_cleanup(smooth_draws, smooth_y, x, df)
+    noisy_draws = draw_cleanup(noisy_draws, smooth_y, x_pred, df)
+    smooth_draws = draw_cleanup(smooth_draws, smooth_y, x_pred, df)
     
     # get best knots and betas
     best_settings = find_best_settings(ln_daily_model, ln_daily_spline_options)
@@ -266,14 +271,13 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     return noisy_draws, smooth_draws, best_settings
 
 
-def synthesize_time_series(location_id: int,
-                           data: pd.DataFrame,
+def synthesize_time_series(df: pd.DataFrame,
                            obs_var: str, pred_vars: List[str],
                            spline_vars: List[str],
                            spline_settings_dir: str,
-                           n_draws: int, plot_dir: str = None) -> pd.DataFrame:
+                           n_draws: int, doy_holdout: int) -> pd.DataFrame:
     # location data
-    df = data[data.location_id == location_id]
+    df = df.copy()
 
     # spline on deaths time series
     total_deaths = (df['Death rate'] * df['population']).max()
@@ -287,35 +291,20 @@ def synthesize_time_series(location_id: int,
                 pred_vars=pred_vars,
                 n_i_knots=n_i_knots,
                 n_draws=n_draws,
-                total_deaths=total_deaths
+                total_deaths=total_deaths,
+                doy_holdout=doy_holdout
             )
             draws_pending = False
-        except:
+        except Exception as e:
             print(f'Synthesis spline failed with {n_i_knots} knots.')
+            print(f'Error: {e}')
         if n_i_knots == 1:
             draws_pending = False
         else:
             n_i_knots -= 1
-    draw_cols = [col for col in noisy_draws.columns if col.startswith('draw_')]
-    df = summarize.append_summary_statistics(smooth_draws, df)
     
     # save knots
     with open(f"{spline_settings_dir}/{df['location_id'][0]}.pkl", 'wb') as fwrite:
         pickle.dump(best_settings, fwrite, -1)
-
-    # plot
-    if plot_dir is not None:
-        plotter(df,
-                [obs_var] + list(compress(spline_vars, (~df[spline_vars].isnull().all(axis=0)).to_list())),
-                smooth_draws,
-                f"{plot_dir}/{df['location_id'][0]}.pdf")
-        
-    # format draw data for infectionator
-    noisy_draws = noisy_draws.rename(index=str, columns={'Date':'date'})
-    smooth_draws = smooth_draws.rename(index=str, columns={'Date':'date'})
-    noisy_draws[draw_cols] = noisy_draws[draw_cols] * noisy_draws[['population']].values
-    smooth_draws[draw_cols] = smooth_draws[draw_cols] * smooth_draws[['population']].values
-    del noisy_draws['population']
-    del smooth_draws['population']
 
     return noisy_draws, smooth_draws

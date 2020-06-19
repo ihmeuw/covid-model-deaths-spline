@@ -7,6 +7,7 @@ from loguru import logger
 import pandas as pd
 import numpy as np
 import yaml
+from collections import namedtuple
 
 from covid_model_deaths_spline import data, models, pdf_merger, cluster, summarize, aggregate
 
@@ -14,7 +15,7 @@ warnings.simplefilter('ignore')
 
 
 def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root: Path,
-                holdout_days: int, n_draws: int):
+                holdout_days: int, doy_holdouts: int, n_draws: int):
     logger.debug("Setting up output directories.")
     model_dir = output_root / 'models'
     spline_settings_dir = output_root / 'spline_settings'
@@ -25,7 +26,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
 
     logger.debug("Loading and cleaning data.")
     hierarchy = data.load_most_detailed_locations(input_root)
-    hierarchy = hierarchy.loc[~hierarchy['location_id'].isin([60892, 60893, 7])]
+    #hierarchy = hierarchy.loc[~hierarchy['location_id'].isin([60892, 60893, 7])]
     agg_hierarchy = data.load_aggregate_locations(input_root)
     full_data = data.load_full_data(input_root)
     case_data = data.get_shifted_data(full_data, 'Confirmed', 'Confirmed case rate')
@@ -83,9 +84,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     smoother_settings = {'obs_var': 'Death rate',
                          'pred_vars': ['Predicted death rate (CFR)', 'Predicted death rate (HFR)'],
                          'spline_vars': ['Confirmed case rate', 'Hospitalization rate'],
-                         'spline_settings_dir': str(spline_settings_dir),
-                         'plot_dir': str(plot_dir),
-                         'n_draws': n_draws}
+                         'spline_settings_dir': str(spline_settings_dir)}
     model_settings.update({'smoother':smoother_settings})
     model_settings['no_cases_locs'] = no_cases_locs
     model_settings['no_hosp_locs'] = no_hosp_locs
@@ -103,7 +102,9 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     with settings_path.open('w') as settings_file:
         yaml.dump(model_settings, settings_file)
     job_args_map = {
-        location_id: [models.__file__, location_id, data_path, settings_path, cluster.OMP_NUM_THREADS]
+        location_id: [models.__file__, 
+                      location_id, data_path, settings_path, doy_holdouts, str(plot_dir), n_draws, 
+                      cluster.OMP_NUM_THREADS]
         for location_id in model_data['location_id'].unique()
     }
     cluster.run_cluster_jobs('covid_death_models', output_root, job_args_map)
@@ -113,9 +114,9 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     for result_path in results_path.iterdir():
         with result_path.open('rb') as result_file:
             results.append(pickle.load(result_file))
-    post_model_data = pd.concat([r['model_data'] for r in results]).reset_index(drop=True)
-    noisy_draws = pd.concat([r['noisy_draws'] for r in results]).reset_index(drop=True)
-    smooth_draws = pd.concat([r['smooth_draws'] for r in results]).reset_index(drop=True)
+    post_model_data = pd.concat([r.model_data for r in results]).reset_index(drop=True)
+    noisy_draws = pd.concat([r.noisy_draws for r in results]).reset_index(drop=True)
+    smooth_draws = pd.concat([r.smooth_draws for r in results]).reset_index(drop=True)
     parent_model_locations = (hierarchy
                               .loc[~hierarchy['location_id'].isin(post_model_data['location_id'].to_list()), 
                                    'location_id']

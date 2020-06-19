@@ -26,10 +26,8 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
 
     logger.debug("Loading and cleaning data.")
     hierarchy = data.load_most_detailed_locations(input_root)
-    #hierarchy = hierarchy.loc[~hierarchy['location_id'].isin([60892, 60893, 7])]
-    hierarchy = hierarchy.loc[hierarchy['path_to_top_parent'].apply(lambda x: '102' in x.split(','))]
+    hierarchy = hierarchy.loc[~hierarchy['location_id'].isin([60892, 60893, 7])]
     agg_hierarchy = data.load_aggregate_locations(input_root)
-    agg_hierarchy = agg_hierarchy.loc[agg_hierarchy['location_id'] == 102]
     full_data = data.load_full_data(input_root)
     case_data = data.get_shifted_data(full_data, 'Confirmed', 'Confirmed case rate')
     hosp_data = data.get_shifted_data(full_data, 'Hospitalizations', 'Hospitalization rate')

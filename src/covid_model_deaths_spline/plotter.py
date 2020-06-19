@@ -171,7 +171,7 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame,
         doy = model_label[model_label.find('(') + 1:model_label.find(')')]
         ax_draws.plot(draw_df['Date'],
                       draw_df[[f'draw_{d}' for d in range(*draw_range)]],
-                      color=DOY_COLORS[doy], alpha=0.05)
+                      color=DOY_COLORS[doy], alpha=0.025)
     for model_label, draw_range in zip(model_labels, draw_ranges):
         # submodel means
         doy = model_label[model_label.find('(') + 1:model_label.find(')')]

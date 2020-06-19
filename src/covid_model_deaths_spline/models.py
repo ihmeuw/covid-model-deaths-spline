@@ -2,7 +2,7 @@ import functools
 from itertools import compress
 import os
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Tuple
 import sys
 from collections import namedtuple
 
@@ -73,13 +73,15 @@ def model_iteration(location_id: int, model_data: pd.DataFrame, model_settings: 
 
 
 def plot_ensemble(location_id: int, smooth_draws: pd.DataFrame, df: pd.DataFrame,
-                  plot_dir: str, obs_var: str, spline_vars: List[str]):
+                  plot_dir: str, obs_var: str, spline_vars: List[str],
+                  model_labels: List[str], draw_ranges: List[Tuple[int, int]]):
     # plot
     df = summarize.append_summary_statistics(smooth_draws.copy(), df.copy())
     plotter.plotter(
         df,
         [obs_var] + list(compress(spline_vars, (~df[spline_vars].isnull().all(axis=0)).to_list())),
         smooth_draws,
+        model_labels, draw_ranges,
         f'{plot_dir}/{location_id}.pdf'
     )
 
@@ -102,30 +104,40 @@ def run_models(location_id: int, data_path: str, settings_path: str,
     iteration_n_draws = [int(n_draws / doy_holdouts)] * doy_holdouts
     iteration_n_draws[-1] += n_draws - np.sum(iteration_n_draws)
     doy_holdouts = np.arange(doy_holdouts)
-    
     results = [model_iteration(location_id, model_data, model_settings, h, d) for h, d in zip(doy_holdouts, iteration_n_draws)]
-    model_data = results[0].model_data
+    
+    # process results
+    model_labels = []
     noisy_draws = []
     smooth_draws = []
     for i, result in enumerate(results):
-        col_add = np.sum(iteration_n_draws[:i])
-        cols = [f'draw_{d}' for d in np.arange(iteration_n_draws[i])]
-        new_cols = [f'draw_{d + col_add}' for d in np.arange(iteration_n_draws[i])]
-        
+        md = result.model_data
+        model_label = md.loc[~md['Death rate'].isnull(), 'Date'].max()
+        model_label = model_label.strftime('%m/%d/%Y (%A)')
+        model_labels.append(model_label)
+
+        col_add = int(np.sum(iteration_n_draws[:i]))
+        cols = [f'draw_{d}' for d in range(iteration_n_draws[i])]
+        new_cols = [f'draw_{d + col_add}' for d in range(iteration_n_draws[i])]
+                
         nd = result.noisy_draws
         nd = nd.rename(index=str, columns=dict(zip(cols, new_cols)))
+        noisy_draws.append(nd)
         sd = result.smooth_draws
         sd = sd.rename(index=str, columns=dict(zip(cols, new_cols)))
-        
-        noisy_draws.append(nd)
         smooth_draws.append(sd)
+    model_data = results[0].model_data
     noisy_draws = functools.reduce(lambda x, y: pd.merge(x, y, how='outer'), noisy_draws)
     smooth_draws = functools.reduce(lambda x, y: pd.merge(x, y, how='outer'), smooth_draws)
     
     # plot
+    draw_ranges = np.cumsum(iteration_n_draws)
+    draw_ranges = np.append([0], draw_ranges)
+    draw_ranges = list(zip(draw_ranges[:-1], draw_ranges[1:]))
     plot_ensemble(location_id, smooth_draws, model_data, plot_dir, 
                   model_settings['smoother']['obs_var'], 
-                  model_settings['smoother']['spline_vars'])
+                  model_settings['smoother']['spline_vars'],
+                  model_labels, draw_ranges)
     draw_cols = [col for col in smooth_draws.columns if col.startswith('draw_')]
     noisy_draws = noisy_draws.rename(index=str, columns={'Date':'date'})
     smooth_draws = smooth_draws.rename(index=str, columns={'Date':'date'})

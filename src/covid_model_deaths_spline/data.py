@@ -151,7 +151,7 @@ def check_counts(model_data: pd.DataFrame, rate_var: str, action: str, threshold
     df = model_data.copy()
     df['Count'] = df[rate_var] * df['population']
     df['Count'] = df['Count'].fillna(0)
-    sub_thresh = df.groupby('location_id')['Count'].transform(max) <= threshold
+    sub_thresh = df.groupby('location_id')['Count'].transform(max) < threshold
     logger.warning(f"Fewer than {threshold} {rate_var.lower().replace(' rate', 's')} for "
                    f"{';'.join(df.loc[sub_thresh, 'location_name'].unique())}\n")
     if action == 'fill_na':
@@ -169,25 +169,25 @@ def check_counts(model_data: pd.DataFrame, rate_var: str, action: str, threshold
 
 def filter_to_epi_threshold(hierarchy: pd.DataFrame,
                             model_data: pd.DataFrame,
-                            threshold: int = 3) -> Tuple[pd.DataFrame, List[int], List[int]]:
+                            death_threshold: int,
+                            epi_threshold: int) -> Tuple[pd.DataFrame, List[int], List[int]]:
     """Drop locations that don't have at least `n` deaths; do not use cases or hospitalizations if under `n`."""
     df = model_data.copy()
-    df = check_counts(df, 'Confirmed case rate', 'fill_na', threshold)
+    df = check_counts(df, 'Confirmed case rate', 'fill_na', epi_threshold)
     days_w_cases = df['Confirmed case rate'].notnull().groupby(df['location_id']).sum()
     no_cases_locs = days_w_cases[days_w_cases == 0].index.to_list()
 
-    df = check_counts(df, 'Hospitalization rate', 'fill_na', threshold)
+    df = check_counts(df, 'Hospitalization rate', 'fill_na', epi_threshold)
     days_w_hosp = df['Hospitalization rate'].notnull().groupby(df['location_id']).sum()
     no_hosp_locs = days_w_hosp[days_w_hosp == 0].index.to_list()
 
-    #df = check_counts(df, 'Death rate', 'drop', threshold)
-    #dropped_locations = set(hierarchy['location_id']).difference(df['location_id'])
-    dropped_locations = set()
+    df = check_counts(df, 'Death rate', 'drop', death_threshold)
+    dropped_locations = set(hierarchy['location_id']).difference(df['location_id'])
 
     if dropped_locations:
-        logger.warning(f"Dropped {sorted(list(dropped_locations))} from data due to lack of cases or deaths.")
+        logger.warning(f"Dropped {sorted(list(dropped_locations))} from data due to lack of deaths.")
 
-    return df, no_cases_locs, no_hosp_locs
+    return df, dropped_locations, no_cases_locs, no_hosp_locs
 
 
 def fill_dates(df: pd.DataFrame, interp_var: str = None) -> pd.DataFrame:

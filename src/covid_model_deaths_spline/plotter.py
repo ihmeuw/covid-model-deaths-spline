@@ -168,7 +168,7 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame,
     ax_draws = fig.add_subplot(gs[2:, 0:])
     for model_label, draw_range in zip(model_labels, draw_ranges):
         # which day
-        if len(model_labels) > 0:
+        if len(model_labels) > 1:
             doy = model_label[model_label.find('(') + 1:model_label.find(')')]
             color = DOY_COLORS[doy]
         else:

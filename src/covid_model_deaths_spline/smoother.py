@@ -191,7 +191,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     last_week['Deaths'] = last_week['Death rate'] * last_week['population']
     last_week['Deaths'][1:] = np.diff(last_week['Deaths'])
     last_week_deaths = last_week.loc[~last_week['Deaths'].isnull()].iloc[-7:]['Deaths'].sum()
-    gprior_se = max(1, last_week_deaths) / 10
+    gprior_se = max(floor_deaths, last_week_deaths) / 25
 
     # add on holdout days to prediction
     x_pred = x.max() + np.arange(doy_holdout + 1)[1:]

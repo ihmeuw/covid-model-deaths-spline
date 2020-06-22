@@ -201,12 +201,12 @@ def fill_dates(df: pd.DataFrame, interp_var: str = None) -> pd.DataFrame:
     return df
 
 
-def apply_parents(failed_model_locations: List[int], hierarchy: pd.DataFrame, 
+def apply_parents(parent_model_locations: List[int], hierarchy: pd.DataFrame, 
                   smooth_draws: pd.DataFrame, model_data: pd.DataFrame, 
                   pop_data: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:    
-    failed_hierarchy = hierarchy.loc[hierarchy['location_id'].isin(failed_model_locations)].reset_index(drop=True)
-    failed_hierarchy['parent_id'] = failed_hierarchy['path_to_top_parent'].apply(lambda x: int(x.split(',')[-2]))
-    swip_swap = list(zip(failed_hierarchy['location_id'], failed_hierarchy['parent_id']))
+    use_parent_hierarchy = hierarchy.loc[hierarchy['location_id'].isin(parent_model_locations)].reset_index(drop=True)
+    use_parent_hierarchy['parent_id'] = use_parent_hierarchy['path_to_top_parent'].apply(lambda x: int(x.split(',')[-2]))
+    swip_swap = list(zip(use_parent_hierarchy['location_id'], use_parent_hierarchy['parent_id']))
     
     filled_draws = []
     for child_id, parent_id in swip_swap:

@@ -13,7 +13,7 @@ from covid_model_deaths_spline import data, models, pdf_merger, cluster, summari
 
 warnings.simplefilter('ignore')
 
-PARENT_MODEL_LOCATIONS = [175, 189]  # Burundi, Tanzania
+PARENT_MODEL_LOCATIONS = [189]  # Tanzania
 
 
 def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root: Path,
@@ -28,7 +28,6 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
 
     logger.debug("Loading and cleaning data.")
     hierarchy = data.load_most_detailed_locations(input_root)
-    hierarchy = hierarchy.loc[~hierarchy['location_id'].isin([60892, 60893, 7])]
     agg_hierarchy = data.load_aggregate_locations(input_root)
     full_data = data.load_full_data(input_root)
     case_data = data.get_shifted_data(full_data, 'Confirmed', 'Confirmed case rate')
@@ -106,7 +105,6 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     settings_path = Path(working_dir) / 'settings.yaml'
     with settings_path.open('w') as settings_file:
         yaml.dump(model_settings, settings_file)
-    app_metadata.update({'parent_model_locations': PARENT_MODEL_LOCATIONS})
     job_args_map = {
         location_id: [models.__file__, 
                       location_id, data_path, settings_path, doy_holdouts, str(plot_dir), n_draws, 
@@ -123,30 +121,26 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     post_model_data = pd.concat([r.model_data for r in results]).reset_index(drop=True)
     noisy_draws = pd.concat([r.noisy_draws for r in results]).reset_index(drop=True)
     smooth_draws = pd.concat([r.smooth_draws for r in results]).reset_index(drop=True)
-    ## ONLY FILL EXPLICITLY SPECIFIED LOCATIONS WITH PARENT MODEL (SPECIFYING ABOVE)
-    # parent_model_locations = (hierarchy
-    #                           .loc[~hierarchy['location_id'].isin(post_model_data['location_id'].to_list()), 
-    #                                'location_id']
-    #                           .tolist())
-    # for location_id in [175, 189]:  # Burundi, Tanzania
-    #     if location_id in hierarchy['location_id'].to_list() and not location_id in parent_model_locations:
-    #         parent_model_locations += [location_id]
-    # app_metadata.update({'parent_model_locations': parent_model_locations})
-    post_model_data = post_model_data.loc[~post_model_data['location_id'].isin(PARENT_MODEL_LOCATIONS)]
-    noisy_draws = noisy_draws.loc[~noisy_draws['location_id'].isin(PARENT_MODEL_LOCATIONS)]
-    smooth_draws = smooth_draws.loc[~smooth_draws['location_id'].isin(PARENT_MODEL_LOCATIONS)]
+    failed_model_locations = (model_data
+                              .loc[~model_data['location_id'].isin(post_model_data['location_id'].to_list()), 
+                                   'location_id']
+                              .unique().tolist())
+    failed_model_locations = [l for l in failed_model_locations if l not in PARENT_MODEL_LOCATIONS]
+    failed_model_locations = [l for l in failed_model_locations if l in hierarchy['location_id'].to_list()]
+    app_metadata.update({'failed_model_locations': failed_model_locations})
     model_data = post_model_data.append(model_data.loc[model_data['location_id'].isin(PARENT_MODEL_LOCATIONS)])
     obs_var = smoother_settings['obs_var']
     spline_vars = smoother_settings['spline_vars']
     
-    logger.debug("Fill failed model locations with parent and plot them.")
-    smooth_draws, model_data = data.apply_parents(parent_model_locations, hierarchy, smooth_draws, 
+    logger.debug("Fill specified model locations with parent and plot them.")
+    smooth_draws, model_data = data.apply_parents(PARENT_MODEL_LOCATIONS, hierarchy, smooth_draws, 
                                                   model_data, pop_data)
     summarize.summarize_and_plot(
-        smooth_draws.loc[smooth_draws['location_id'].isin(parent_model_locations)].rename(columns={'date': 'Date'}),
-        model_data.loc[model_data['location_id'].isin(parent_model_locations)],
+        smooth_draws.loc[smooth_draws['location_id'].isin(PARENT_MODEL_LOCATIONS)].rename(columns={'date': 'Date'}),
+        model_data.loc[model_data['location_id'].isin(PARENT_MODEL_LOCATIONS)],
         str(plot_dir), obs_var=obs_var, spline_vars=spline_vars, pop_data=pop_data
     )
+    app_metadata.update({'parent_model_locations': PARENT_MODEL_LOCATIONS})
         
     logger.debug("Make post-model aggregates and plot them.")
     agg_locations = [aggregate.Location(1, 'Global')] + agg_locations

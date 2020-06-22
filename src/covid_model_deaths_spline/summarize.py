@@ -78,6 +78,6 @@ def summarize_and_plot(agg_df: pd.DataFrame, model_data: pd.DataFrame,
             list(compress([obs_var] + spline_vars, 
                           (~p_summ_df[[obs_var] + spline_vars].isnull().all(axis=0)).to_list())),
             p_agg_df,
-            ['Current'], [1000],
+            ['Indirect'], [(0, len(draw_cols))],
             f'{plot_dir}/{location_id}.pdf'
         )

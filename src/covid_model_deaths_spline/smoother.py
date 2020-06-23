@@ -231,8 +231,9 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     smooth_y_insample = smooth_y_insample.flatten()
     ln_daily_mod_df['smooth_y_insample'] = smooth_y_insample[~np.isnan(smooth_y_insample)]
 
-    # get uncertainty in ln(daily)
+    # get uncertainty in ln(daily) -- max MAD of 1 (only an issue with small numbers)
     mad = get_mad(ln_daily_mod_df, weighted=True)
+    mad = min(1, mad)
     rstd = mad * 1.4826
     smooth_y = np.array([smooth_y]).T
     noisy_draws = np.random.normal(smooth_y, rstd, (smooth_y.size, n_draws))

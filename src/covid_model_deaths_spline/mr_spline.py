@@ -105,7 +105,7 @@ class SplineFit:
         else:
             boundary_pctile = 0.05
         
-        # sample
+        # sample, fixing first and last interior knots as specified
         n_intervals = n_i_knots + 1
         k_start = 0.
         k_end = 1.

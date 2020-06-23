@@ -141,7 +141,7 @@ def get_mad(df: pd.DataFrame, weighted: bool) -> float:
     residuals = (df['y'] - df['smooth_y_insample']).values
     abs_residuals = np.abs(residuals)
     if weighted:
-        weights = (1 / (1 / np.exp(df['y']))**2).values
+        weights = (1 / df['obs_se']**2).values
         weights /= weights.sum()
         weights = weights[np.argsort(abs_residuals)]
         abs_residuals = np.sort(abs_residuals)

@@ -176,7 +176,7 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame,
         # submodel draws
         ax_draws.plot(draw_df['Date'],
                       draw_df[[f'draw_{d}' for d in range(*draw_range)]],
-                      color=color, alpha=0.05)
+                      color=color, alpha=0.025)
         # submodel means
         ax_draws.plot(draw_df['Date'],
                       draw_df[[f'draw_{d}' for d in range(*draw_range)]].mean(axis=1),

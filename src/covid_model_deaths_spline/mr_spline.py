@@ -132,15 +132,16 @@ class SplineFit:
             ensemble_knots = rescale_k(spline_data[observed], spline_data, ensemble_knots)
         
         # make sure we have unique knots
-        _ensemble_knots = []
-        for knots in ensemble_knots:
-            if np.unique(np.quantile(spline_data, knots)).size == knots.size:
-                _ensemble_knots.append(knots)
-        ensemble_knots = np.vstack(_ensemble_knots)
-        
-        # don't use if more than half of potential knot placements are non-unique (i.e., eliminated in previous step)
-        if ensemble_knots.shape[0] < N / 2:
-            raise ValueError('More than half of knots represent non-unique data values.')
+        if spline_options['spline_knots_type'] == 'frequency':
+            _ensemble_knots = []
+            for knots in ensemble_knots:
+                if np.unique(np.quantile(spline_data, knots)).size == knots.size:
+                    _ensemble_knots.append(knots)
+            ensemble_knots = np.vstack(_ensemble_knots)
+
+            # don't use if only < 10 of potential knot placements are unique (i.e., eliminated in previous step)
+            if ensemble_knots.shape[0] < 10:
+                raise ValueError('Fewer than 10 knot options represent unique data values (frequency).')
         
         return ensemble_knots
 

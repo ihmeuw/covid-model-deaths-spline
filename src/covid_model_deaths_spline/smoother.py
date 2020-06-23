@@ -205,6 +205,8 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
         x=x, n_i_knots=n_i_knots, subset_idx=max_1week_of_zeros,
         mono=False, limits=ln_daily_limits, tail_gprior=np.array([0, gprior_se])
     )
+    if ln_daily_mod_df['x'].unique().size < n_i_knots * 3:
+        raise ValueError(f'Smoother model data (daily) contains fewer than {n_i_knots * 3} days.')
     ln_daily_smooth_y, ln_daily_model, ln_daily_mod_df = run_smoothing_model(
         ln_daily_mod_df, n_i_knots, ln_daily_spline_options, True, pred_df
     )
@@ -217,6 +219,8 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
         x=x, n_i_knots=n_i_knots, subset_idx=max_1week_of_zeros,
         mono=True, limits=ln_cumul_limits, tail_gprior=np.array([0, gprior_se])
     )
+    if ln_cumul_mod_df['x'].unique().size < n_i_knots * 3:
+        raise ValueError(f'Smoother model data (cumulative) contains fewer than {n_i_knots * 3} days.')
     ln_cumul_smooth_y, ln_cumul_model, ln_cumul_mod_df = run_smoothing_model(
         ln_cumul_mod_df, n_i_knots, ln_cumul_spline_options, False, pred_df, ensemble_knots
     )

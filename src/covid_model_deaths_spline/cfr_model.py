@@ -45,12 +45,16 @@ def cfr_model(df: pd.DataFrame,
     non_na = ~df[list(adj_vars.values())[1:]].isnull().any(axis=1)
     df = df.loc[non_na].reset_index(drop=True)
 
-    # lose NAs in deaths as well for modeling
+    # lose NAs in deaths as well for modeling; also trim to one week of 1 case/hosp at beginning and 0 at end
     mod_df = df.copy()
     non_na = ~mod_df[adj_vars[dep_var]].isnull()
-    max_1week_of_zeros_spline = (mod_df[spline_var][::-1] == 0).cumsum()[::-1] <= 7
-    mod_df = mod_df.loc[non_na & max_1week_of_zeros_spline,
+    one_per_pop = 1 / df['population'][0]
+    max_1week_of_ones_head = (mod_df[spline_var][::-1] <= one_per_pop).cumsum()[::-1] <= 7
+    max_1week_of_zero_tail = (np.diff(mod_df[spline_var], prepend=0)[::-1].cumsum() == 0)[::-1].cumsum() <= 7
+    mod_df = mod_df.loc[non_na & max_1week_of_ones_head & max_1week_of_zero_tail,
                         ['intercept'] + list(adj_vars.values())].reset_index(drop=True)
+    if len(mod_df) < n_i_knots * 3:
+        raise ValueError(f'{model_type} model data contains fewer than {n_i_knots * 3} observations.')
 
     # run model and predict
     spline_options = {

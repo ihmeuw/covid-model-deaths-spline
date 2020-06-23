@@ -55,9 +55,7 @@ def cfr_model(df: pd.DataFrame,
     max_1week_of_zeros_tail = (np.diff(mod_df[spline_var], prepend=0)[::-1].cumsum() == 0)[::-1].cumsum() <= 7
     mod_df = mod_df.loc[non_na & max_1week_of_ones_head & max_1week_of_zeros_tail,
                         ['intercept'] + list(adj_vars.values())].reset_index(drop=True)
-    if len(mod_df) < n_i_knots * 3:
-        raise ValueError(f'{model_type} model data contains fewer than {n_i_knots * 3} observations.')
-
+    
     # run model and predict
     spline_options = {
         'spline_knots_type': 'frequency',
@@ -74,6 +72,8 @@ def cfr_model(df: pd.DataFrame,
     last_days_pctile = min(0.05, 5 / len(mod_df))
     while prediction_pending:
         try:
+            if len(mod_df) < n_i_knots * 3:
+                raise ValueError(f'{model_type} model data contains fewer than {n_i_knots * 3} observations.')
             mr_model = SplineFit(
                 data=mod_df,
                 dep_var=adj_vars[dep_var],

@@ -138,6 +138,10 @@ class SplineFit:
                 _ensemble_knots.append(knots)
         ensemble_knots = np.vstack(_ensemble_knots)
         
+        # don't use if more than half of potential knot placements are non-unique (i.e., eliminated in previous step)
+        if ensemble_knots.shape[0] < N / 2:
+            raise ValueError('More than half of knots represent non-unique data values.')
+        
         return ensemble_knots
 
     def fit_model(self):

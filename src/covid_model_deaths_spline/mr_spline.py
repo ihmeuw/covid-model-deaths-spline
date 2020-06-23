@@ -99,28 +99,34 @@ class SplineFit:
         
     def get_ensemble_knots(self, n_i_knots: int, spline_data: np.array, observed: np.array, 
                            spline_options: Dict, N: int = 50, min_interval: float = 0.05) -> List[np.array]:
+        # rules based on whether we are modeling with pseudo-date
+        if not observed.all():
+            boundary_pctile = 0.
+        else:
+            boundary_pctile = 0.05
+        
         # sample
         n_intervals = n_i_knots + 1
         k_start = 0.
         k_end = 1.
         if n_i_knots >= 3:
-            if spline_data.min() != spline_data[observed].min():
+            if np.diff([spline_data.min(), np.quantile(spline_data[observed], boundary_pctile)]) > 1e-10:
                 n_intervals -= 1
-                k_start = (spline_data[observed].min() - spline_data.min()) / spline_data.ptp() + min_interval
-            if spline_data.max() != spline_data[observed].max():
+                k_start = boundary_pctile + min_interval
+            if np.diff([np.quantile(spline_data[observed], 1. - boundary_pctile), spline_data.max()]) > 1e-10:
                 n_intervals -= 1
-                k_end = (spline_data[observed].max() - spline_data.min()) / spline_data.ptp() - min_interval
+                k_end = 1. - (boundary_pctile + min_interval)
         ensemble_knots = utils.sample_knots(n_intervals, 
                                             b=np.array([[k_start, k_end]]*(n_intervals-1)),
                                             d=np.array([[min_interval, 1]]*n_intervals),
                                             N=N)
         if k_start > 0.:
-            ensemble_knots = np.insert(ensemble_knots, 1, min_interval, 1)
+            ensemble_knots = np.insert(ensemble_knots, 1, boundary_pctile, 1)
         if k_end < 1.:
-            ensemble_knots = np.insert(ensemble_knots, -1, 1. - min_interval, 1)
+            ensemble_knots = np.insert(ensemble_knots, -1, 1. - boundary_pctile, 1)
             
         # rescale to observed
-        if (~observed).any():
+        if not observed.all():
             if spline_options['spline_knots_type'] != 'domain':
                 raise ValueError('Expecting `spline_knots_type` domain for knot rescaling (stage 2 model).')
             ensemble_knots = rescale_k(spline_data[observed], spline_data, ensemble_knots)

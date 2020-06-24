@@ -31,7 +31,7 @@ def run_smoothing_model(mod_df: pd.DataFrame, n_i_knots: int, spline_options: Di
         ensemble_knots=ensemble_knots,
         scale_se=scale_se,
         observed_var='observed',
-        pseudo_se_multiplier=3.
+        pseudo_se_multiplier=2.
     )
     mr_model.fit_model()
     smooth_y = mr_model.predict(pred_df)
@@ -68,14 +68,13 @@ def process_inputs(y: np.array, col_names: List[str],
         'observed':obs_data
     })
     mod_df['observed'] = mod_df['observed'].astype(bool)
-    beta_prior = np.array([[-np.inf, np.inf]] * (n_i_knots + 1))
+    beta_prior = np.array([limits] * (n_i_knots + 1))
     beta_prior[0] = np.array([0, np.inf]) # no intercept, so actually first beta
     spline_options={
             'spline_knots_type': 'domain',
             'spline_degree': 3,
             'spline_r_linear': True,
             'spline_l_linear': True,
-            'prior_spline_funval_uniform': limits,
             'prior_beta_uniform': beta_prior.T
         }
     if mono:
@@ -113,10 +112,10 @@ def draw_cleanup(draws: np.array, smooth_y: np.array, x: np.array, df: pd.DataFr
 def get_limits(y: np.array) -> np.array:
     y = y.copy()
     y = y[~np.isnan(y)]
-    funval_lim = np.abs(y.mean())
-    lower = -np.abs(funval_lim - np.abs(y.min()))
+    upper_lim = np.abs(y).max()
+    lower_lim = -upper_lim
     
-    return np.array([lower * 2, funval_lim])
+    return np.array([lower_lim, upper_lim])
 
 
 def combine_cumul_daily(from_cumul: np.array, from_daily: np.array, 
@@ -174,7 +173,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     floor = floor_deaths / df['population'][0]
     keep_idx = ~df[[obs_var] + pred_vars].isnull().all(axis=1)
     max_1week_of_zeros_head = (df[obs_var][::-1] == 0).cumsum()[::-1] <= 7
-    max_1week_of_zeros_tail = (np.diff(df[obs_var], prepend=0)[::-1].cumsum() == 0)[::-1].cumsum() <= 7
+    #max_1week_of_zeros_tail = (np.diff(df[obs_var], prepend=0)[::-1].cumsum() == 0)[::-1].cumsum() <= 7
     cumul_y = df.loc[keep_idx, [obs_var] + pred_vars].values
     daily_y = cumul_y.copy()
     daily_y[1:] = np.diff(daily_y, axis=0)
@@ -185,8 +184,8 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     # how many days in fit window are non-zero (use this to determine cumul/daily weights?)
     # TODO: test this out to determine potential gradient
     non_zero_data = np.diff(df['Death rate'], prepend=0) > 0
-    pct_non_zero = len(df.loc[max_1week_of_zeros_head & max_1week_of_zeros_tail & non_zero_data]) / \
-                   len(df.loc[max_1week_of_zeros_head & max_1week_of_zeros_tail])
+    pct_non_zero = len(df.loc[max_1week_of_zeros_head & non_zero_data]) / \
+                   len(df.loc[max_1week_of_zeros_head])
 
     # get deaths in last week
     last_week = df.copy()
@@ -201,10 +200,10 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     pred_df = pd.DataFrame({'intercept':1, 'x': x_pred})
     
     # prepare data and run daily
-    ln_daily_limits = get_limits(ln_daily_y[max_1week_of_zeros_head & max_1week_of_zeros_tail])
+    ln_daily_limits = get_limits(ln_daily_y[max_1week_of_zeros_head])
     ln_daily_mod_df, ln_daily_spline_options = process_inputs(
         y=ln_daily_y, col_names=[obs_var] + pred_vars,
-        x=x, n_i_knots=n_i_knots, subset_idx=max_1week_of_zeros_head & max_1week_of_zeros_tail,
+        x=x, n_i_knots=n_i_knots, subset_idx=max_1week_of_zeros_head,
         mono=False, limits=ln_daily_limits, tail_gprior=np.array([0, gprior_se])
     )
     if ln_daily_mod_df['x'].unique().size < n_i_knots * 3:
@@ -215,10 +214,10 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     ensemble_knots = ln_daily_model.ensemble_knots
     
     # run cumulative, using slope after the last knot as the prior mean
-    ln_cumul_limits = get_limits(ln_cumul_y[max_1week_of_zeros_head & max_1week_of_zeros_tail])
+    ln_cumul_limits = get_limits(ln_cumul_y[max_1week_of_zeros_head])
     ln_cumul_mod_df, ln_cumul_spline_options = process_inputs(
         y=ln_cumul_y, col_names=[obs_var] + pred_vars,
-        x=x, n_i_knots=n_i_knots, subset_idx=max_1week_of_zeros_head & max_1week_of_zeros_tail,
+        x=x, n_i_knots=n_i_knots, subset_idx=max_1week_of_zeros_head,
         mono=True, limits=ln_cumul_limits, tail_gprior=np.array([0, gprior_se])
     )
     if ln_cumul_mod_df['x'].unique().size < n_i_knots * 3:
@@ -255,8 +254,6 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
         for nd in noisy_draws.T
     ]
     rescaled_ensemble_knots = rescale_k(ln_daily_mod_df['x'].values, x, ensemble_knots)
-    #refit_limits = get_limits(noisy_draws)
-    del ln_daily_spline_options['prior_spline_funval_uniform']
     _combiner = functools.partial(run_smoothing_model,
                                   n_i_knots=n_i_knots,
                                   spline_options=ln_daily_spline_options,

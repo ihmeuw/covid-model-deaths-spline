@@ -23,10 +23,10 @@ from covid_model_deaths_spline import runner
               type=click.INT,
               default=0,
               help='Number of days of data to drop.')
-@click.option('--doy-holdouts',
+@click.option('--dow-holdouts',
               type=click.INT,
               default=6,
-              help='Days to go back for ')
+              help='Days to go back for ensembling day of week effects.')
 @click.option('--n-draws',
               type=click.INT,
               default=1000,
@@ -39,7 +39,7 @@ from covid_model_deaths_spline import runner
               help='Tags this run as a production run.')
 @cli_tools.add_verbose_and_with_debugger
 def run_deaths(run_metadata,
-               inputs_version, output_root, n_holdout_days, doy_holdouts, n_draws,
+               inputs_version, output_root, n_holdout_days, dow_holdouts, n_draws,
                mark_dir_as_best, production_tag,
                verbose, with_debugger):
     """Run spline deaths model."""
@@ -55,7 +55,7 @@ def run_deaths(run_metadata,
     cli_tools.configure_logging_to_files(run_directory)
 
     main = cli_tools.monitor_application(runner.make_deaths, logger, with_debugger)
-    app_metadata, _ = main(inputs_root, run_directory, n_holdout_days, doy_holdouts, n_draws)
+    app_metadata, _ = main(inputs_root, run_directory, n_holdout_days, dow_holdouts, n_draws)
 
     run_metadata['app_metadata'] = app_metadata.to_dict()
     run_metadata.dump(run_directory / paths.METADATA_FILE_NAME)

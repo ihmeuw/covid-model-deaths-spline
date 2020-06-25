@@ -16,7 +16,7 @@ def cfr_model(df: pd.DataFrame,
               daily: bool,
               log: bool,
               dep_var: str, spline_var: str, indep_vars: List[str],
-              model_dir: str, 
+              model_dir: str,
               model_type: str) -> pd.DataFrame:
     # set up model
     df = df.copy()
@@ -45,13 +45,15 @@ def cfr_model(df: pd.DataFrame,
     non_na = ~df[list(adj_vars.values())[1:]].isnull().any(axis=1)
     df = df.loc[non_na].reset_index(drop=True)
 
-    # lose NAs in deaths as well for modeling
+    # lose NAs in deaths as well for modeling; also trim to one week of 1 case/hosp at beginning and 0 at end
     mod_df = df.copy()
     non_na = ~mod_df[adj_vars[dep_var]].isnull()
-    max_1week_of_zeros_spline = (mod_df[spline_var][::-1] == 0).cumsum()[::-1] <= 7
-    mod_df = mod_df.loc[non_na & max_1week_of_zeros_spline,
+    one_per_pop = 1 / df['population'][0]
+    max_1week_of_ones_head = (mod_df[spline_var][::-1] <= one_per_pop).cumsum()[::-1] <= 7
+    #max_1week_of_zeros_tail = (np.diff(mod_df[spline_var], prepend=0)[::-1].cumsum() == 0)[::-1].cumsum() <= 7
+    mod_df = mod_df.loc[non_na & max_1week_of_ones_head,
                         ['intercept'] + list(adj_vars.values())].reset_index(drop=True)
-
+    
     # run model and predict
     spline_options = {
         'spline_knots_type': 'frequency',
@@ -68,6 +70,8 @@ def cfr_model(df: pd.DataFrame,
     last_days_pctile = min(0.05, 5 / len(mod_df))
     while prediction_pending:
         try:
+            if len(mod_df) < n_i_knots * 3:
+                raise ValueError(f'{model_type} model data contains fewer than {n_i_knots * 3} observations.')
             mr_model = SplineFit(
                 data=mod_df,
                 dep_var=adj_vars[dep_var],

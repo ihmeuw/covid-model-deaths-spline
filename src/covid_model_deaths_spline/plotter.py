@@ -155,7 +155,6 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame,
     draw_df = draw_df.copy()
     draw_cols = [col for col in draw_df.columns if col.startswith('draw_')]
     draw_df[draw_cols] = np.diff(draw_df[draw_cols], axis=0, prepend=0)
-    draw_df[draw_cols] = np.log(draw_df[draw_cols])
     
     # format model inputs
     df = df.copy()
@@ -167,21 +166,24 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame,
     # plot draws
     ax_draws = fig.add_subplot(gs[2:, 0:])
     for model_label, draw_range in zip(model_labels, draw_ranges):
+        # which day
+        if len(model_labels) > 1:
+            doy = model_label[model_label.find('(') + 1:model_label.find(')')]
+            color = DOY_COLORS[doy]
+        else:
+            color = 'firebrick'
         # submodel draws
-        doy = model_label[model_label.find('(') + 1:model_label.find(')')]
         ax_draws.plot(draw_df['Date'],
-                      draw_df[[f'draw_{d}' for d in range(*draw_range)]],
-                      color=DOY_COLORS[doy], alpha=0.025)
-    for model_label, draw_range in zip(model_labels, draw_ranges):
+                      np.log(draw_df[[f'draw_{d}' for d in range(*draw_range)]]),
+                      color=color, alpha=0.025)
         # submodel means
-        doy = model_label[model_label.find('(') + 1:model_label.find(')')]
         ax_draws.plot(draw_df['Date'],
-                      draw_df[[f'draw_{d}' for d in range(*draw_range)]],
-                      color=DOY_COLORS[doy], linewidth=3, label=model_label)
+                      np.log(draw_df[[f'draw_{d}' for d in range(*draw_range)]].mean(axis=1)),
+                      color=color, linewidth=3, label=model_label)
     # overall mean
     ax_draws.plot(draw_df['Date'],
-             draw_df[draw_cols].mean(axis=1),
-             color='black', linestyle='--', linewidth=3)
+                  np.log(draw_df[draw_cols].mean(axis=1)),
+                  color='black', linestyle='--', linewidth=3)
     ax_draws.set_ylabel('ln(daily death rate)', fontsize=18)
     ax_draws.legend(loc=2, ncol=1, fontsize=16)
     ax_draws.set_xlabel('Date', fontsize=14)

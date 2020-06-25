@@ -97,39 +97,28 @@ class SplineFit:
         self.submodel_fits = None
         self.coef_dicts = None
         
-    def get_ensemble_knots(self, n_i_knots: int, spline_data: np.array, observed: np.array, 
-                           spline_options: Dict, N: int = 50, min_interval: float = 0.05) -> List[np.array]:
-        # rules based on whether we are modeling with pseudo-data
-        obs_start = spline_data.min() == spline_data[observed].min()
-        if obs_start:
-            start_pctile = 0.05
-        else:
-            start_pctile = 0.01
-        obs_end = spline_data.max() == spline_data[observed].max()
-        if obs_end:
-            end_pctile = 0.95
-        else:
-            end_pctile = 0.99
-        
+    def get_ensemble_knots(self, n_i_knots: int, spline_data: np.array, observed: np.array,
+                           spline_options: Dict, N: int = 50,
+                           min_interval: float = 0.05, boundary_pctile: float = 0.025) -> List[np.array]:
         # sample, fixing first and last interior knots as specified
         n_intervals = n_i_knots + 1
         k_start = 0.
         k_end = 1.
         if n_i_knots >= 3:
-            # start
-            n_intervals -= 1
-            k_start = start_pctile + min_interval
-            # end
-            n_intervals -= 1
-            k_end = end_pctile - min_interval
-        ensemble_knots = utils.sample_knots(n_intervals, 
+            if np.diff([spline_data.min(), np.quantile(spline_data[observed], boundary_pctile)]) > 1e-10:
+                n_intervals -= 1
+                k_start = boundary_pctile + min_interval
+            if np.diff([np.quantile(spline_data[observed], 1. - boundary_pctile), spline_data.max()]) > 1e-10:
+                n_intervals -= 1
+                k_end = 1. - (boundary_pctile + min_interval)
+        ensemble_knots = utils.sample_knots(n_intervals,
                                             b=np.array([[k_start, k_end]] * (n_intervals - 1)),
                                             d=np.array([[min_interval, 1]] * n_intervals),
                                             N=N)
         if k_start > 0.:
-            ensemble_knots = np.insert(ensemble_knots, 1, start_pctile, 1)
+            ensemble_knots = np.insert(ensemble_knots, 1, boundary_pctile, 1)
         if k_end < 1.:
-            ensemble_knots = np.insert(ensemble_knots, -1, end_pctile, 1)
+            ensemble_knots = np.insert(ensemble_knots, -1, 1. - boundary_pctile, 1)
             
         # rescale to observed
         if not observed.all():

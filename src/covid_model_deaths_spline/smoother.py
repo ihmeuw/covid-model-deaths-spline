@@ -31,7 +31,7 @@ def run_smoothing_model(mod_df: pd.DataFrame, n_i_knots: int, spline_options: Di
         ensemble_knots=ensemble_knots,
         scale_se=scale_se,
         observed_var='observed',
-        pseudo_se_multiplier=3.
+        pseudo_se_multiplier=2.
     )
     mr_model.fit_model()
     smooth_y = mr_model.predict(pred_df)

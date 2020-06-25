@@ -31,7 +31,7 @@ def run_smoothing_model(mod_df: pd.DataFrame, n_i_knots: int, spline_options: Di
         ensemble_knots=ensemble_knots,
         scale_se=scale_se,
         observed_var='observed',
-        pseudo_se_multiplier=2.
+        pseudo_se_multiplier=3.
     )
     mr_model.fit_model()
     smooth_y = mr_model.predict(pred_df)
@@ -187,12 +187,12 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     pct_non_zero = len(df.loc[max_1week_of_zeros_head & non_zero_data]) / \
                    len(df.loc[max_1week_of_zeros_head])
 
-    # get deaths in last week
+    # get deaths in last week (SE=1 at 5 deaths per day)
     last_week = df.copy()
     last_week['Deaths'] = last_week['Death rate'] * last_week['population']
     last_week['Deaths'][1:] = np.diff(last_week['Deaths'])
     last_week_deaths = last_week.loc[~last_week['Deaths'].isnull()].iloc[-7:]['Deaths'].sum()
-    gprior_se = max(floor_deaths, last_week_deaths) / 25
+    gprior_se = max(floor_deaths, last_week_deaths) / 35
 
     # add on holdout days to prediction
     x_pred = x.max() + np.arange(dow_holdout + 1)[1:]

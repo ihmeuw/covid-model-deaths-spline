@@ -16,7 +16,7 @@ def cfr_model(df: pd.DataFrame,
               daily: bool,
               log: bool,
               dep_var: str, spline_var: str, indep_vars: List[str],
-              model_dir: str, 
+              model_dir: str,
               model_type: str) -> pd.DataFrame:
     # set up model
     df = df.copy()
@@ -51,9 +51,9 @@ def cfr_model(df: pd.DataFrame,
     one_per_pop = 1 / df['population'][0]
     if daily:
         raise ValueError('Assume elasticity model is cumulative in leading 1s/trailing 0s snipping.')
-    max_2weeks_of_ones_head = (mod_df[spline_var][::-1] <= one_per_pop).cumsum()[::-1] <= 14
-    #max_2weeks_of_zeros_tail = (np.diff(mod_df[spline_var], prepend=0)[::-1].cumsum() == 0)[::-1].cumsum() <= 14
-    mod_df = mod_df.loc[non_na & max_2weeks_of_ones_head,
+    max_1week_of_ones_head = (mod_df[spline_var][::-1] <= one_per_pop).cumsum()[::-1] <= 7
+    #max_1week_of_zeros_tail = (np.diff(mod_df[spline_var], prepend=0)[::-1].cumsum() == 0)[::-1].cumsum() <= 7
+    mod_df = mod_df.loc[non_na & max_1week_of_ones_head,
                         ['intercept'] + list(adj_vars.values())].reset_index(drop=True)
     
     # run model and predict

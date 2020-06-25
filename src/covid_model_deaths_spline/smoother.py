@@ -187,12 +187,15 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     pct_non_zero = len(df.loc[max_1week_of_zeros_head & non_zero_data]) / \
                    len(df.loc[max_1week_of_zeros_head])
 
-    # get deaths in last week (SE=1 at 5 deaths per day)
+    # get deaths in last week to determine whether we use flat prior
     last_week = df.copy()
     last_week['Deaths'] = last_week['Death rate'] * last_week['population']
     last_week['Deaths'][1:] = np.diff(last_week['Deaths'])
     last_week_deaths = last_week.loc[~last_week['Deaths'].isnull()].iloc[-7:]['Deaths'].sum()
-    gprior_se = max(floor_deaths, last_week_deaths) / 35
+    if last_week_deaths < 10:
+        gprior_se = 0.01
+    else:
+        gprior_se = np.inf
 
     # add on holdout days to prediction
     x_pred = x.max() + np.arange(dow_holdout + 1)[1:]

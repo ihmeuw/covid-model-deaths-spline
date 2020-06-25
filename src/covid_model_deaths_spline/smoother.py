@@ -31,7 +31,7 @@ def run_smoothing_model(mod_df: pd.DataFrame, n_i_knots: int, spline_options: Di
         ensemble_knots=ensemble_knots,
         scale_se=scale_se,
         observed_var='observed',
-        pseudo_se_multiplier=3.
+        pseudo_se_multiplier=2.
     )
     mr_model.fit_model()
     smooth_y = mr_model.predict(pred_df)
@@ -167,7 +167,7 @@ def find_best_settings(mr_model, spline_options):
 
 def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
              n_i_knots: int, n_draws: int, total_deaths: float,
-             doy_holdout: int, floor_deaths: float = 0.01) -> Tuple[pd.DataFrame, pd.DataFrame]:
+             dow_holdout: int, floor_deaths: float = 0.01) -> Tuple[pd.DataFrame, pd.DataFrame]:
     # extract inputs
     df = df.sort_values('Date').reset_index(drop=True)
     floor = floor_deaths / df['population'][0]
@@ -195,7 +195,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     gprior_se = max(floor_deaths, last_week_deaths) / 25
 
     # add on holdout days to prediction
-    x_pred = x.max() + np.arange(doy_holdout + 1)[1:]
+    x_pred = x.max() + np.arange(dow_holdout + 1)[1:]
     x_pred = np.hstack([x, x_pred])
     pred_df = pd.DataFrame({'intercept':1, 'x': x_pred})
     
@@ -279,7 +279,7 @@ def synthesize_time_series(df: pd.DataFrame,
                            obs_var: str, pred_vars: List[str],
                            spline_vars: List[str],
                            spline_settings_dir: str,
-                           n_draws: int, doy_holdout: int) -> pd.DataFrame:
+                           n_draws: int, dow_holdout: int) -> pd.DataFrame:
     # location data
     df = df.copy()
 
@@ -296,7 +296,7 @@ def synthesize_time_series(df: pd.DataFrame,
                 n_i_knots=n_i_knots,
                 n_draws=n_draws,
                 total_deaths=total_deaths,
-                doy_holdout=doy_holdout
+                dow_holdout=dow_holdout
             )
             draws_pending = False
         except Exception as e:

@@ -18,23 +18,23 @@ from covid_model_deaths_spline import cfr_model, smoother, summarize, plotter
 RESULTS = namedtuple('Results', 'model_data noisy_draws smooth_draws')
 
 
-def drop_days_by_indicator(data: pd.Series, doy_holdout: int):
+def drop_days_by_indicator(data: pd.Series, dow_holdout: int):
     data = data.values
-    if doy_holdout > 0:
-        drop_idx = np.argwhere(~np.isnan(data))[-doy_holdout:]
+    if dow_holdout > 0:
+        drop_idx = np.argwhere(~np.isnan(data))[-dow_holdout:]
         data[drop_idx] = np.nan
     
     return data
     
     
 def model_iteration(location_id: int, model_data: pd.DataFrame, model_settings: Dict, 
-                    doy_holdout: int, n_draws: int):
+                    dow_holdout: int, n_draws: int):
     # drop days
-    print(doy_holdout)
+    print(dow_holdout)
     model_data = model_data.copy()
     indicators = ['Death rate', 'Confirmed case rate', 'Hospitalization rate']  # should derive this somehow
     for indicator in indicators:
-        model_data[indicator] = drop_days_by_indicator(model_data[indicator], doy_holdout)
+        model_data[indicator] = drop_days_by_indicator(model_data[indicator], dow_holdout)
     model_data = model_data.loc[~model_data[indicators].isnull().all(axis=1)]
     
     # first stage model(s)
@@ -63,9 +63,9 @@ def model_iteration(location_id: int, model_data: pd.DataFrame, model_settings: 
     model_data = model_data.loc[:, keep_cols]
     
     # second stage model
-    noisy_draws, smooth_draws = smoother.synthesize_time_series(model_data, doy_holdout=doy_holdout, n_draws=n_draws, 
+    noisy_draws, smooth_draws = smoother.synthesize_time_series(model_data, dow_holdout=dow_holdout, n_draws=n_draws, 
                                                                 **model_settings['smoother'])
-    model_data['doy_holdout'] = doy_holdout
+    model_data['dow_holdout'] = dow_holdout
     
     return RESULTS(model_data, noisy_draws, smooth_draws)
 
@@ -85,7 +85,7 @@ def plot_ensemble(location_id: int, smooth_draws: pd.DataFrame, df: pd.DataFrame
 
 
 def run_models(location_id: int, data_path: str, settings_path: str,
-               doy_holdouts: int, plot_dir: str, n_draws: int):
+               dow_holdouts: int, plot_dir: str, n_draws: int):
     # set seed
     np.random.seed(location_id)
     
@@ -98,11 +98,11 @@ def run_models(location_id: int, data_path: str, settings_path: str,
         model_settings = yaml.full_load(settings_file)
     
     # run models
-    doy_holdouts += 1
-    iteration_n_draws = [int(n_draws / doy_holdouts)] * doy_holdouts
+    dow_holdouts += 1
+    iteration_n_draws = [int(n_draws / dow_holdouts)] * dow_holdouts
     iteration_n_draws[-1] += n_draws - np.sum(iteration_n_draws)
-    doy_holdouts = np.arange(doy_holdouts)
-    results = [model_iteration(location_id, model_data, model_settings, h, d) for h, d in zip(doy_holdouts, iteration_n_draws)]
+    dow_holdouts = np.arange(dow_holdouts)
+    results = [model_iteration(location_id, model_data, model_settings, h, d) for h, d in zip(dow_holdouts, iteration_n_draws)]
     
     # process results
     model_labels = []
@@ -157,6 +157,6 @@ if __name__ == '__main__':
     run_models(location_id=int(sys.argv[1]),
                data_path=sys.argv[2],
                settings_path=sys.argv[3],
-               doy_holdouts=int(sys.argv[4]),
+               dow_holdouts=int(sys.argv[4]),
                plot_dir=sys.argv[5],
                n_draws=int(sys.argv[6]))

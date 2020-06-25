@@ -17,7 +17,7 @@ PARENT_MODEL_LOCATIONS = [189]  # Tanzania
 
 
 def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root: Path,
-                holdout_days: int, doy_holdouts: int, n_draws: int):
+                holdout_days: int, dow_holdouts: int, n_draws: int):
     logger.debug("Setting up output directories.")
     model_dir = output_root / 'models'
     spline_settings_dir = output_root / 'spline_settings'
@@ -107,7 +107,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
         yaml.dump(model_settings, settings_file)
     job_args_map = {
         location_id: [models.__file__, 
-                      location_id, data_path, settings_path, doy_holdouts, str(plot_dir), n_draws, 
+                      location_id, data_path, settings_path, dow_holdouts, str(plot_dir), n_draws, 
                       cluster.OMP_NUM_THREADS]
         for location_id in model_data['location_id'].unique() if location_id not in PARENT_MODEL_LOCATIONS
     }

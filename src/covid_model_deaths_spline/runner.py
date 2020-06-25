@@ -66,7 +66,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     
     logger.debug("Filter cases/hospitalizations based on threshold.")
     model_data, dropped_locations, no_cases_locs, no_hosp_locs = data.filter_to_epi_threshold(
-        hierarchy, model_data, death_threshold=2, epi_threshold=5
+        hierarchy, model_data, death_threshold=0, epi_threshold=5
     )
     app_metadata.update({'dropped_locations': dropped_locations})
 

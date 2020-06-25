@@ -181,11 +181,11 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     ln_daily_y = np.log(apply_floor(daily_y, floor))
     x = df.index[keep_idx].values
     
-    # how many days in fit window are non-zero (use this to determine cumul/daily weights?)
-    # TODO: test this out to determine potential gradient
-    non_zero_data = np.diff(df['Death rate'], prepend=0) > 0
-    pct_non_zero = len(df.loc[max_1week_of_zeros_head & non_zero_data]) / \
-                   len(df.loc[max_1week_of_zeros_head])
+    # # how many days in fit window are non-zero (use this to determine cumul/daily weights?)
+    # # TODO: test this out to determine potential gradient
+    # non_zero_data = np.diff(df['Death rate'], prepend=0) > 0
+    # pct_non_zero = len(df.loc[max_1week_of_zeros_head & non_zero_data]) / \
+    #                len(df.loc[max_1week_of_zeros_head])
 
     # get deaths in last week to determine whether we use flat prior
     last_week = df.copy()

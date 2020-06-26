@@ -41,10 +41,12 @@ def model_iteration(location_id: int, model_data: pd.DataFrame, model_settings: 
     model_data_list = [model_data.loc[:,['location_id', 'location_name', 'Date',
                                          'Death rate', 'population']]]
     if location_id not in model_settings['no_cases_locs']:
+        # and len(model_data[model_data['Death rate'].notnull() & model_data['Confirmed case rate'].notnull()]) >= 7:
         cfr_model_data = cfr_model.cfr_model(model_data, dow_holdout=dow_holdout, **model_settings['CFR'])
         model_data_list += [cfr_model_data.loc[:, ['location_id', 'Date',
                                                    'Confirmed case rate', 'Predicted death rate (CFR)']]]
     if location_id not in model_settings['no_hosp_locs']:
+        # and len(model_data[model_data['Death rate'].notnull() & model_data['Hospitalization rate'].notnull()]) >= 7:
         hfr_model_data = cfr_model.cfr_model(model_data, dow_holdout=dow_holdout, **model_settings['HFR'])
         model_data_list += [hfr_model_data.loc[:, ['location_id', 'Date',
                                                    'Hospitalization rate', 'Predicted death rate (HFR)']]]
@@ -100,7 +102,7 @@ def run_models(location_id: int, data_path: str, settings_path: str,
     # run models
     dow_holdouts += 1
     iteration_n_draws = [int(n_draws / dow_holdouts)] * dow_holdouts
-    iteration_n_draws[-1] += n_draws - np.sum(iteration_n_draws)
+    iteration_n_draws[0] += n_draws - np.sum(iteration_n_draws)
     dow_holdouts = np.arange(dow_holdouts)
     results = [model_iteration(location_id, model_data, model_settings, h, d) for h, d in zip(dow_holdouts, iteration_n_draws)]
     

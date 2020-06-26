@@ -165,6 +165,40 @@ def find_best_settings(mr_model, spline_options):
     return Results(best_knots, best_betas, spline_options)
 
 
+def buffer(data: np.array, extend_method: str) -> np.array:
+    data = data[~np.isnan(data)]
+    if data.size > 0:
+        if extend_method == 'project':
+            start = data[0] - np.diff(data[:4]).mean()
+            end = data[-1] + np.diff(data[-4:]).mean()
+        elif extend_method == 'mean':
+            start = data[:3].mean()
+            end = data[-3:].mean()
+        else:
+            raise ValueError('Invalid extension specified')
+        data = np.append(start, data)
+        data = np.append(data, end)
+    
+    return data
+
+
+def roller(data: np.array, extend_method: str) -> np.array:
+    data = data.copy()
+    data = [d for d in data.T]
+    b_data = [buffer(d, extend_method) for d in data]
+    s_data = [(pd.Series(bd)
+               .rolling(window=3, min_periods=1, center=True)
+               .mean().values) for bd in b_data]
+    s_data = [sd[1:-1] for sd in s_data]
+    
+    smoothed = []
+    for d, sd in zip(data, s_data):
+        d[~np.isnan(d)] = sd
+        smoothed.append(d)
+    
+    return np.vstack(smoothed).T
+
+
 def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
              n_i_knots: int, n_draws: int, total_deaths: float,
              dow_holdout: int, floor_deaths: float = 0.01) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -177,6 +211,8 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     cumul_y = df.loc[keep_idx, [obs_var] + pred_vars].values
     daily_y = cumul_y.copy()
     daily_y[1:] = np.diff(daily_y, axis=0)
+    cumul_y = roller(cumul_y, 'project')
+    daily_y = roller(daily_y, 'mean')
     ln_cumul_y = np.log(apply_floor(cumul_y, floor))
     ln_daily_y = np.log(apply_floor(daily_y, floor))
     x = df.index[keep_idx].values
@@ -187,7 +223,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     # pct_non_zero = len(df.loc[max_1week_of_zeros_head & non_zero_data]) / \
     #                len(df.loc[max_1week_of_zeros_head])
 
-    # get deaths in last week to determine whether we use flat prior
+    # get deaths in last week to determine flat prior
     last_week = df.copy()
     last_week['Deaths'] = last_week['Death rate'] * last_week['population']
     last_week['Deaths'][1:] = np.diff(last_week['Deaths'])
@@ -196,6 +232,8 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
         gprior_se = 0.01
     else:
         gprior_se = np.inf
+    # # (avg 10 deaths/day -> SE=1)
+    # gprior_se = max(floor_deaths, last_week_deaths) / 70
 
     # add on holdout days to prediction
     x_pred = x.max() + np.arange(dow_holdout + 1)[1:]

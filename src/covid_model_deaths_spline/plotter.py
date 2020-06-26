@@ -176,11 +176,11 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame,
         ax_draws.plot(draw_df['Date'],
                       np.log(draw_df[[f'draw_{d}' for d in range(*draw_range)]]),
                       color=color, alpha=0.025)
-        # submodel means
+        # submodel means (plot log of mean, not mean of log draws)
         ax_draws.plot(draw_df['Date'],
                       np.log(draw_df[[f'draw_{d}' for d in range(*draw_range)]].mean(axis=1)),
                       color=color, linewidth=3, label=model_label)
-    # overall mean
+    # overall mean (plot log of mean, not mean of log draws)
     ax_draws.plot(draw_df['Date'],
                   np.log(draw_df[draw_cols].mean(axis=1)),
                   color='black', linestyle='--', linewidth=3)

@@ -41,11 +41,11 @@ def model_iteration(location_id: int, model_data: pd.DataFrame, model_settings: 
     model_data_list = [model_data.loc[:,['location_id', 'location_name', 'Date',
                                          'Death rate', 'population']]]
     if location_id not in model_settings['no_cases_locs']:
-        cfr_model_data = cfr_model.cfr_model(model_data, **model_settings['CFR'])
+        cfr_model_data = cfr_model.cfr_model(model_data, dow_holdout=dow_holdout, **model_settings['CFR'])
         model_data_list += [cfr_model_data.loc[:, ['location_id', 'Date',
                                                    'Confirmed case rate', 'Predicted death rate (CFR)']]]
     if location_id not in model_settings['no_hosp_locs']:
-        hfr_model_data = cfr_model.cfr_model(model_data, **model_settings['HFR'])
+        hfr_model_data = cfr_model.cfr_model(model_data, dow_holdout=dow_holdout, **model_settings['HFR'])
         model_data_list += [hfr_model_data.loc[:, ['location_id', 'Date',
                                                    'Hospitalization rate', 'Predicted death rate (HFR)']]]
     

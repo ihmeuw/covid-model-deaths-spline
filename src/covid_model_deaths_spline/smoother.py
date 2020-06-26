@@ -311,7 +311,7 @@ def synthesize_time_series(df: pd.DataFrame,
             n_i_knots -= 1
     
     # save knots
-    with open(f"{spline_settings_dir}/{df['location_id'][0]}.pkl", 'wb') as fwrite:
+    with open(f"{spline_settings_dir}/{df['location_id'][0]}_{dow_holdout}.pkl", 'wb') as fwrite:
         pickle.dump(best_settings, fwrite, -1)
 
     return noisy_draws, smooth_draws

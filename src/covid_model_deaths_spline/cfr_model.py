@@ -17,7 +17,8 @@ def cfr_model(df: pd.DataFrame,
               log: bool,
               dep_var: str, spline_var: str, indep_vars: List[str],
               model_dir: str,
-              model_type: str) -> pd.DataFrame:
+              model_type: str,
+              dow_holdout: int) -> pd.DataFrame:
     # set up model
     df = df.copy()
 
@@ -104,7 +105,7 @@ def cfr_model(df: pd.DataFrame,
     if daily:
         df[f'Predicted death rate ({model_type})'] = df[f'Predicted death rate ({model_type})'].cumsum()
 
-    with open(f"{model_dir}/{df['location_id'][0]}_{model_type}.pkl", 'wb') as fwrite:
+    with open(f"{model_dir}/{df['location_id'][0]}_{model_type}_{dow_holdout}.pkl", 'wb') as fwrite:
         pickle.dump(mr_model, fwrite, -1)
 
     return df

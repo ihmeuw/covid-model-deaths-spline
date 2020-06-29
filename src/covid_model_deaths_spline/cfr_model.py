@@ -90,7 +90,7 @@ def cfr_model(df: pd.DataFrame,
             else:
                 raise ValueError('Prediction all nans (non-convergence).')
         except Exception as e:
-            print(f'Elasticity model failed with {n_i_knots} knots (error).')
+            print(f'Elasticity model failed with {n_i_knots} knots.')
             print(f'Error: {e}')
         if n_i_knots == 1:
             prediction_pending = False

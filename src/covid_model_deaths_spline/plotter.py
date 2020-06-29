@@ -164,6 +164,8 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame,
         df.loc[df[input_var] < floor, input_var] = floor
     
     # plot draws
+    show_draws = np.arange(0, len(draw_cols), 10).tolist()
+    show_draws += [len(draw_cols) - 1]
     ax_draws = fig.add_subplot(gs[2:, 0:])
     for model_label, draw_range in zip(model_labels, draw_ranges):
         # which day
@@ -174,15 +176,15 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame,
             color = 'firebrick'
         # submodel draws
         ax_draws.plot(draw_df['Date'],
-                      np.log(draw_df[[f'draw_{d}' for d in range(*draw_range)]]),
-                      color=color, alpha=0.025)
-        # submodel means (plot log of mean, not mean of log draws)
+                      np.log(draw_df[[f'draw_{d}' for d in range(*draw_range) if d in show_draws]]),
+                      color=color, alpha=0.05)
+        # submodel means
         ax_draws.plot(draw_df['Date'],
-                      np.log(draw_df[[f'draw_{d}' for d in range(*draw_range)]].mean(axis=1)),
+                      np.log(draw_df[[f'draw_{d}' for d in range(*draw_range)]]).mean(axis=1),
                       color=color, linewidth=3, label=model_label)
-    # overall mean (plot log of mean, not mean of log draws)
+    # overall mean
     ax_draws.plot(draw_df['Date'],
-                  np.log(draw_df[draw_cols].mean(axis=1)),
+                  np.log(draw_df[draw_cols]).mean(axis=1),
                   color='black', linestyle='--', linewidth=3)
     ax_draws.set_ylabel('ln(daily death rate)', fontsize=18)
     ax_draws.legend(loc=2, ncol=1, fontsize=16)

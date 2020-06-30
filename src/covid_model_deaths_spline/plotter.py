@@ -158,7 +158,7 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame,
     
     # format model inputs
     df = df.copy()
-    floor = 0.01 / df['population'].values[0]
+    floor = 0.05 / df['population'].values[0]
     for input_var in ['Death rate', 'Predicted death rate (CFR)', 'Predicted death rate (HFR)']:
         df[input_var][1:] = np.diff(df[input_var])
         df.loc[df[input_var] < floor, input_var] = floor

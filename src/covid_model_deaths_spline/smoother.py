@@ -120,11 +120,11 @@ def get_limits(y: np.array) -> np.array:
 
 
 def combine_cumul_daily(from_cumul: np.array, from_daily: np.array, 
-                        total_deaths: float, ceiling: float = 50.) -> np.array:
+                        total_deaths: float, floor: float, ceiling: float = 50.) -> np.array:
     # convert cumulative to daily (replace first day with first estimate)
     from_cumul = np.exp(from_cumul.copy())
     from_cumul[1:] = np.diff(from_cumul, axis=0)
-    from_cumul = apply_floor(from_cumul, min(from_cumul[from_cumul > 0]))
+    from_cumul = apply_floor(from_cumul, floor)
     
     # daily in linear
     from_daily = np.exp(from_daily.copy())
@@ -229,11 +229,11 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     )
 
     # average the two in linear daily (increasing influence of daily as we get closer to ceiling), then log
-    smooth_y = combine_cumul_daily(ln_cumul_smooth_y, ln_daily_smooth_y, total_deaths)
+    smooth_y = combine_cumul_daily(ln_cumul_smooth_y, ln_daily_smooth_y, total_deaths, floor)
     smooth_y_insample = combine_cumul_daily(
         pd.pivot_table(ln_cumul_mod_df, index='x', columns='data_type', values='smooth_y').values, 
         pd.pivot_table(ln_daily_mod_df, index='x', columns='data_type', values='smooth_y').values, 
-        total_deaths
+        total_deaths, floor
     )
     smooth_y_insample = smooth_y_insample.flatten()
     ln_daily_mod_df['smooth_y_insample'] = smooth_y_insample[~np.isnan(smooth_y_insample)]

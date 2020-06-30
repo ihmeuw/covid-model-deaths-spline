@@ -20,7 +20,7 @@ def apply_floor(vals: np.array, floor_val: float) -> np.array:
 
 def run_smoothing_model(mod_df: pd.DataFrame, n_i_knots: int, spline_options: Dict, scale_se: bool,
                         pred_df: pd.DataFrame, ensemble_knots: np.array = None, 
-                        results_only: bool = False) -> np.array:
+                        results_only: bool = False, se_default: float = 1.) -> np.array:
     mr_model = SplineFit(
         data=mod_df,
         dep_var='y',
@@ -31,7 +31,8 @@ def run_smoothing_model(mod_df: pd.DataFrame, n_i_knots: int, spline_options: Di
         ensemble_knots=ensemble_knots,
         scale_se=scale_se,
         observed_var='observed',
-        pseudo_se_multiplier=2.
+        pseudo_se_multiplier=2.,
+        se_default=se_default
     )
     mr_model.fit_model()
     smooth_y = mr_model.predict(pred_df)
@@ -167,13 +168,12 @@ def find_best_settings(mr_model, spline_options):
 
 def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
              n_i_knots: int, n_draws: int, total_deaths: float,
-             dow_holdout: int, floor_deaths: float = 0.01) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    # extract inputs
+             dow_holdout: int, floor_deaths: float = 0.05) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    # extract inputs (only keep one day of 0)
     df = df.sort_values('Date').reset_index(drop=True)
     floor = floor_deaths / df['population'][0]
     keep_idx = ~df[[obs_var] + pred_vars].isnull().all(axis=1)
-    max_1week_of_zeros_head = (df[obs_var][::-1] == 0).cumsum()[::-1] <= 7
-    #max_1week_of_zeros_tail = (np.diff(df[obs_var], prepend=0)[::-1].cumsum() == 0)[::-1].cumsum() <= 7
+    max_1day_of_zeros_head = (df[obs_var][::-1] == 0).cumsum()[::-1] <= 1
     cumul_y = df.loc[keep_idx, [obs_var] + pred_vars].values
     daily_y = cumul_y.copy()
     daily_y[1:] = np.diff(daily_y, axis=0)
@@ -184,20 +184,17 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     # # how many days in fit window are non-zero (use this to determine cumul/daily weights?)
     # # TODO: test this out to determine potential gradient
     # non_zero_data = np.diff(df['Death rate'], prepend=0) > 0
-    # pct_non_zero = len(df.loc[max_1week_of_zeros_head & non_zero_data]) / \
-    #                len(df.loc[max_1week_of_zeros_head])
+    # pct_non_zero = len(df.loc[max_1day_of_zeros_head & non_zero_data]) / \
+    #                len(df.loc[max_1day_of_zeros_head])
 
     # get deaths in last week to determine flat prior
-    last_week = df.copy()
-    last_week['Deaths'] = last_week['Death rate'] * last_week['population']
-    last_week['Deaths'][1:] = np.diff(last_week['Deaths'])
-    last_week_deaths = last_week.loc[~last_week['Deaths'].isnull()].iloc[-7:]['Deaths'].sum()
-    # if last_week_deaths < 10.:
-    #     gprior_se = 0.01
-    # else:
-    #     # decreasing SE over week, crossing 1 at day 5
-    #     gprior_se = 4 / dow_holdout
-    gprior_se = max(floor_deaths, last_week_deaths) / 70
+    interval_n = 14
+    interval_denom = interval_n * 10.
+    last_interval = df.copy()
+    last_interval['Deaths'] = last_interval['Death rate'] * last_interval['population']
+    last_interval['Deaths'][1:] = np.diff(last_interval['Deaths'])
+    last_interval_deaths = last_interval.loc[~last_interval['Deaths'].isnull()].iloc[-interval_n:]['Deaths'].sum()
+    gprior_std = max(floor_deaths, last_interval_deaths) / interval_denom
 
     # add on holdout days to prediction
     x_pred = x.max() + np.arange(dow_holdout + 1)[1:]
@@ -205,11 +202,11 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     pred_df = pd.DataFrame({'intercept':1, 'x': x_pred})
     
     # prepare data and run daily
-    ln_daily_limits = get_limits(ln_daily_y[max_1week_of_zeros_head])
+    ln_daily_limits = get_limits(ln_daily_y[max_1day_of_zeros_head])
     ln_daily_mod_df, ln_daily_spline_options = process_inputs(
         y=ln_daily_y, col_names=[obs_var] + pred_vars,
-        x=x, n_i_knots=n_i_knots, subset_idx=max_1week_of_zeros_head,
-        mono=False, limits=ln_daily_limits, tail_gprior=np.array([0, gprior_se])
+        x=x, n_i_knots=n_i_knots, subset_idx=max_1day_of_zeros_head,
+        mono=False, limits=ln_daily_limits, tail_gprior=np.array([0, gprior_std])
     )
     if ln_daily_mod_df['x'].unique().size < n_i_knots * 3:
         raise ValueError(f'Smoother model data (daily) contains fewer than {n_i_knots * 3} days.')
@@ -219,11 +216,11 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     ensemble_knots = ln_daily_model.ensemble_knots
     
     # run cumulative, using slope after the last knot as the prior mean
-    ln_cumul_limits = get_limits(ln_cumul_y[max_1week_of_zeros_head])
+    ln_cumul_limits = get_limits(ln_cumul_y[max_1day_of_zeros_head])
     ln_cumul_mod_df, ln_cumul_spline_options = process_inputs(
         y=ln_cumul_y, col_names=[obs_var] + pred_vars,
-        x=x, n_i_knots=n_i_knots, subset_idx=max_1week_of_zeros_head,
-        mono=True, limits=ln_cumul_limits, tail_gprior=np.array([0, gprior_se])
+        x=x, n_i_knots=n_i_knots, subset_idx=max_1day_of_zeros_head,
+        mono=True, limits=ln_cumul_limits, tail_gprior=np.array([0, gprior_std])
     )
     if ln_cumul_mod_df['x'].unique().size < n_i_knots * 3:
         raise ValueError(f'Smoother model data (cumulative) contains fewer than {n_i_knots * 3} days.')
@@ -258,12 +255,15 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
         })
         for nd in noisy_draws.T
     ]
+    refit_se = 1 / np.exp(smooth_y)**0.2
+    refit_se = np.mean(refit_se[-14:])
     rescaled_ensemble_knots = rescale_k(ln_daily_mod_df['x'].values, x, ensemble_knots)
     _combiner = functools.partial(run_smoothing_model,
                                   n_i_knots=n_i_knots,
                                   spline_options=ln_daily_spline_options,
                                   pred_df=pred_df,
                                   scale_se=False,
+                                  se_default=refit_se,
                                   ensemble_knots=rescaled_ensemble_knots,
                                   results_only=True)
     with multiprocessing.Pool(20) as p:

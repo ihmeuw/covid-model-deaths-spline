@@ -19,7 +19,8 @@ class SplineFit:
                  scale_se_power: float = 0.2,
                  scale_se_floor_pctile: float = 0.05,
                  observed_var: str = None, 
-                 pseudo_se_multiplier: float = 1.):
+                 pseudo_se_multiplier: float = 1.,
+                 se_default: float = 1.):
         # set up model data
         data = data.copy()
         if scale_se:
@@ -27,7 +28,7 @@ class SplineFit:
             se_floor = np.percentile(data['obs_se'], scale_se_floor_pctile)
             data.loc[data['obs_se'] < se_floor, 'obs_se'] = se_floor
         else:
-            data['obs_se'] = 1
+            data['obs_se'] = se_default
         if observed_var:
             if not data[observed_var].dtype == 'bool':
                 raise ValueError(f'Observed variable ({observed_var}) is not boolean.')
@@ -99,7 +100,7 @@ class SplineFit:
         
     def get_ensemble_knots(self, n_i_knots: int, spline_data: np.array, observed: np.array,
                            spline_options: Dict, N: int = 50,
-                           min_interval: float = 0.05, boundary_pctile: float = 0.05) -> List[np.array]:
+                           min_interval: float = 0.05, boundary_pctile: float = 0.025) -> List[np.array]:
         # sample, fixing first and last interior knots as specified
         n_intervals = n_i_knots + 1
         k_start = 0.

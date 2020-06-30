@@ -25,9 +25,9 @@ def cfr_model(df: pd.DataFrame,
     # add intercept
     df['intercept'] = 1
 
-    # log transform, setting floor of 0.01 per population
+    # log transform, setting floor of 0.05 per population
     df = df.sort_values('Date').reset_index(drop=True)
-    floor = 0.01 / df['population'].values[0]
+    floor = 0.05 / df['population'].values[0]
     adj_vars = {}
     for orig_var in [dep_var, spline_var] + indep_vars:
         mod_var = f'Model {orig_var.lower()}'
@@ -46,56 +46,60 @@ def cfr_model(df: pd.DataFrame,
     non_na = ~df[list(adj_vars.values())[1:]].isnull().any(axis=1)
     df = df.loc[non_na].reset_index(drop=True)
 
-    # lose NAs in deaths as well for modeling; also below 2.5% of cases/deaths
+    # lose NAs in deaths as well for modeling; also below 5% of cases/deaths
     mod_df = df.copy()
     non_na = ~mod_df[adj_vars[dep_var]].isnull()
     one_per_pop = 1 / df['population'][0]
-    post_pct_cases = mod_df[spline_var] >= (mod_df[spline_var].max() * 0.025)
-    post_pct_deaths = mod_df[dep_var] >= (mod_df[dep_var].max() * 0.025)
+    post_pct_cases = mod_df[spline_var] >= (mod_df[spline_var].max() * 0.05)
+    post_pct_deaths = mod_df[dep_var] >= (mod_df[dep_var].max() * 0.05)
     mod_df = mod_df.loc[non_na & post_pct_cases & post_pct_deaths,
                         ['intercept'] + list(adj_vars.values())].reset_index(drop=True)
     
-    # run model and predict
-    spline_options = {
-        'spline_knots_type': 'frequency',
-        'spline_degree': 3,
-        'spline_r_linear':True,
-        'spline_l_linear':True,
-    }
-    if not daily:
-        spline_options.update({'prior_spline_monotonicity':'increasing'})
-        
-    # run model
-    prediction_pending = True
-    n_i_knots = 6
-    last_days_pctile = min(0.05, 5 / len(mod_df))
-    while prediction_pending:
-        try:
-            if len(mod_df) < n_i_knots * 3:
-                raise ValueError(f'{model_type} model data contains fewer than {n_i_knots * 3} observations.')
-            mr_model = SplineFit(
-                data=mod_df,
-                dep_var=adj_vars[dep_var],
-                spline_var=adj_vars[spline_var],
-                indep_vars=['intercept'] + list(map(adj_vars.get, indep_vars)),
-                n_i_knots=n_i_knots,
-                spline_options=spline_options,
-                scale_se=True,
-                scale_se_floor_pctile=last_days_pctile
-            )
-            mr_model.fit_model()
-            prediction = mr_model.predict(df)
-            if not np.isnan(prediction).any():
+    # only run if at least a week of observations
+    if len(mod_df) >= 7:
+        # run model and predict
+        spline_options = {
+            'spline_knots_type': 'frequency',
+            'spline_degree': 3,
+            'spline_r_linear':True,
+            'spline_l_linear':True,
+        }
+        if not daily:
+            spline_options.update({'prior_spline_monotonicity':'increasing'})
+
+        # run model
+        prediction_pending = True
+        n_i_knots = 6
+        last_days_pctile = min(0.05, 5 / len(mod_df))
+        while prediction_pending:
+            try:
+                if len(mod_df) < n_i_knots * 3:
+                    raise ValueError(f'{model_type} model data contains fewer than {n_i_knots * 3} observations.')
+                mr_model = SplineFit(
+                    data=mod_df,
+                    dep_var=adj_vars[dep_var],
+                    spline_var=adj_vars[spline_var],
+                    indep_vars=['intercept'] + list(map(adj_vars.get, indep_vars)),
+                    n_i_knots=n_i_knots,
+                    spline_options=spline_options,
+                    scale_se=True,
+                    scale_se_floor_pctile=last_days_pctile
+                )
+                mr_model.fit_model()
+                prediction = mr_model.predict(df)
+                if not np.isnan(prediction).any():
+                    prediction_pending = False
+                else:
+                    raise ValueError('Prediction all nans (non-convergence).')
+            except Exception as e:
+                print(f'Elasticity model failed with {n_i_knots} knots.')
+                print(f'Error: {e}')
+            if n_i_knots == 1:
                 prediction_pending = False
             else:
-                raise ValueError('Prediction all nans (non-convergence).')
-        except Exception as e:
-            print(f'Elasticity model failed with {n_i_knots} knots.')
-            print(f'Error: {e}')
-        if n_i_knots == 1:
-            prediction_pending = False
-        else:
-            n_i_knots -= 1
+                n_i_knots -= 1
+    else:
+        prediction = np.array([np.nan] * len(df))
     
     # attach prediction
     df['Predicted model death rate'] = prediction

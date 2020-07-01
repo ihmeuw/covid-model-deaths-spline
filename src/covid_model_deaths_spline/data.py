@@ -87,8 +87,8 @@ def get_death_data(full_data: pd.DataFrame) -> pd.DataFrame:
 
 def get_population_data(input_root: Path, hierarchy: pd.DataFrame) -> pd.DataFrame:
     """Filter and clean population data."""
-    pop_df = pd.read_csv(input_root / 'age_pop.csv')
-    pop_df = pop_df.groupby('location_id', as_index=False)['population'].sum()
+    pop_df = pd.read_csv(input_root / 'output_measures' / 'population' / 'all_populations.csv')
+    pop_df = pop_df[(pop_df.age_group_id == 22) & (pop_df.sex_id == 3)]
     pop_df = hierarchy[['location_id', 'location_name']].merge(pop_df)
     
     return pop_df

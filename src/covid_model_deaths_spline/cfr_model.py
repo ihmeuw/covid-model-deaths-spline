@@ -42,8 +42,6 @@ def cfr_model(df: pd.DataFrame,
     df['Model daily'] = daily
     
     # check assumptions
-    if log:
-        raise ValueError('Not expecting log CFR/HFR model.')
     if daily:
         raise ValueError('Not expecting daily CFR/HFR model.')
 
@@ -51,12 +49,10 @@ def cfr_model(df: pd.DataFrame,
     non_na = ~df[list(adj_vars.values())[1:]].isnull().any(axis=1)
     df = df.loc[non_na].reset_index(drop=True)
 
-    # lose NAs in deaths as well for modeling; also below 5% of cases/deaths
+    # lose NAs in deaths as well for modeling
     mod_df = df.copy()
     non_na = ~mod_df[adj_vars[dep_var]].isnull()
-    #post_pct_cases = mod_df[spline_var] >= (mod_df[spline_var].max() * 0.05)
-    #post_pct_deaths = mod_df[dep_var] >= (mod_df[dep_var].max() * 0.05)
-    mod_df = mod_df.loc[non_na,  #  & post_pct_cases & post_pct_deaths
+    mod_df = mod_df.loc[non_na,
                         ['intercept'] + list(adj_vars.values())].reset_index(drop=True)
     
     # only run if at least a week of observations
@@ -75,6 +71,12 @@ def cfr_model(df: pd.DataFrame,
         }
         if not daily:
             spline_options.update({'prior_spline_monotonicity':'increasing'})
+        
+        # conditional settings
+        if log:
+            add_args = {'scale_se_floor_pctile': 0.}
+        else:
+            add_args = {'se_default': np.sqrt(mod_df[adj_vars[dep_var]].max())}
 
         # run model
         mr_model = SplineFit(
@@ -84,9 +86,9 @@ def cfr_model(df: pd.DataFrame,
             indep_vars=['intercept'] + list(map(adj_vars.get, indep_vars)),
             n_i_knots=n_i_knots,
             spline_options=spline_options,
-            scale_se=False,
-            log=False,
-            se_default=np.sqrt(mod_df[adj_vars[dep_var]].max())
+            scale_se=log,
+            log=log,
+            **add_args
         )
         mr_model.fit_model()
         prediction = mr_model.predict(df)

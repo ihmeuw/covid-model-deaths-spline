@@ -100,7 +100,13 @@ class SplineFit:
         
     def get_ensemble_knots(self, n_i_knots: int, spline_data: np.array, observed: np.array,
                            spline_options: Dict, N: int = 50,
-                           min_interval: float = 0.05, boundary_pctile: float = 0.025) -> List[np.array]:
+                           min_interval: float = 0.05) -> List[np.array]:
+        # where are our fixed outer points
+        if observed.all():
+            boundary_pctile = 0.025
+        else:
+            boundary_pctile = 0.
+            
         # sample, fixing first and last interior knots as specified
         n_intervals = n_i_knots + 1
         k_start = 0.

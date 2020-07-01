@@ -70,8 +70,8 @@ def model_iteration(location_id: int, model_data: pd.DataFrame, model_settings: 
     model_data = model_data.loc[:, keep_cols]
     
     # second stage model
-    noisy_draws, smooth_draws = smoother.synthesize_time_series(model_data, dow_holdout=dow_holdout, n_draws=n_draws, 
-                                                                **model_settings['smoother'])
+    noisy_draws, smooth_draws = smoother.synthesize_time_series(model_data, dow_holdout=dow_holdout,
+                                                                n_draws=n_draws, **model_settings['smoother'])
     model_data['dow_holdout'] = dow_holdout
     
     return RESULTS(model_data, noisy_draws, smooth_draws)

@@ -90,7 +90,6 @@ def get_population_data(input_root: Path, hierarchy: pd.DataFrame) -> pd.DataFra
     pop_df = pd.read_csv(input_root / 'output_measures' / 'population' / 'all_populations.csv')
     pop_df = pop_df[(pop_df.age_group_id == 22) & (pop_df.sex_id == 3)]
     pop_df = hierarchy[['location_id', 'location_name']].merge(pop_df)
-    
     return pop_df
 
 
@@ -170,7 +169,7 @@ def check_counts(model_data: pd.DataFrame, rate_var: str, action: str, threshold
 def filter_to_epi_threshold(hierarchy: pd.DataFrame,
                             model_data: pd.DataFrame,
                             death_threshold: int,
-                            epi_threshold: int) -> Tuple[pd.DataFrame, List[int], List[int]]:
+                            epi_threshold: int) -> Tuple[pd.DataFrame, List[int], List[int], List[int]]:
     """Drop locations that don't have at least `n` deaths; do not use cases or hospitalizations if under `n`."""
     df = model_data.copy()
     df = check_counts(df, 'Confirmed case rate', 'fill_na', epi_threshold)
@@ -201,13 +200,13 @@ def fill_dates(df: pd.DataFrame, interp_var: str = None) -> pd.DataFrame:
     return df
 
 
-def apply_parents(parent_model_locations: List[int], hierarchy: pd.DataFrame, 
-                  smooth_draws: pd.DataFrame, model_data: pd.DataFrame, 
-                  pop_data: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:    
+def apply_parents(parent_model_locations: List[int], hierarchy: pd.DataFrame,
+                  smooth_draws: pd.DataFrame, model_data: pd.DataFrame,
+                  pop_data: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     use_parent_hierarchy = hierarchy.loc[hierarchy['location_id'].isin(parent_model_locations)].reset_index(drop=True)
     use_parent_hierarchy['parent_id'] = use_parent_hierarchy['path_to_top_parent'].apply(lambda x: int(x.split(',')[-2]))
     swip_swap = list(zip(use_parent_hierarchy['location_id'], use_parent_hierarchy['parent_id']))
-    
+
     filled_draws = []
     for child_id, parent_id in swip_swap:
         draws = smooth_draws.loc[smooth_draws['location_id'] == parent_id]
@@ -222,5 +221,5 @@ def apply_parents(parent_model_locations: List[int], hierarchy: pd.DataFrame,
     if filled_draws:
         filled_draws = pd.concat(filled_draws)
         smooth_draws = smooth_draws.append(filled_draws)
-        
+
     return smooth_draws, model_data

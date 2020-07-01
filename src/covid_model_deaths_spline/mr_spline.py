@@ -20,10 +20,13 @@ class SplineFit:
                  scale_se_floor_pctile: float = 0.05,
                  observed_var: str = None, 
                  pseudo_se_multiplier: float = 1.,
-                 se_default: float = 1.):
+                 se_default: float = 1.,
+                 log: bool = True):
         # set up model data
         data = data.copy()
         if scale_se:
+            if not log:
+                raise ValueError('Data SE scalar assumes logged dependent variable.')
             data['obs_se'] = 1./np.exp(data[dep_var])**scale_se_power
             se_floor = np.percentile(data['obs_se'], scale_se_floor_pctile)
             data.loc[data['obs_se'] < se_floor, 'obs_se'] = se_floor
@@ -51,11 +54,16 @@ class SplineFit:
         # cov models
         cov_models = []
         if 'intercept' in indep_vars:
+            if log:
+                prior_beta_uniform = {'prior_beta_uniform': np.array([-np.inf, 0.])}
+            else:
+                prior_beta_uniform = {'prior_beta_uniform': np.array([0., np.inf])}
             cov_models += [LinearCovModel(
                 alt_cov='intercept',
                 use_re=True,
-                prior_gamma_uniform=np.array([0.0, 0.0]),
-                name='intercept'
+                prior_gamma_uniform=np.array([0., 0.]),
+                name='intercept',
+                **prior_beta_uniform
             )]
         if 'Model testing rate' in indep_vars:
             cov_models += [LinearCovModel(
@@ -102,30 +110,33 @@ class SplineFit:
                            spline_options: Dict, N: int = 50,
                            min_interval: float = 0.05) -> List[np.array]:
         # where are our fixed outer points
+        start_boundary_pctile = 0.025
         if observed.all():
-            boundary_pctile = 0.025
+            end_boundary_pctile = 0.975
         else:
-            boundary_pctile = 0.
+            end_boundary_pctile = 1.
             
         # sample, fixing first and last interior knots as specified
         n_intervals = n_i_knots + 1
         k_start = 0.
         k_end = 1.
         if n_i_knots >= 3:
-            if np.diff([spline_data.min(), np.quantile(spline_data[observed], boundary_pctile)]) > 1e-10:
+            if np.diff([spline_data.min(), 
+                        np.quantile(spline_data[observed], start_boundary_pctile)]) > 1e-10:
                 n_intervals -= 1
-                k_start = boundary_pctile + min_interval
-            if np.diff([np.quantile(spline_data[observed], 1. - boundary_pctile), spline_data.max()]) > 1e-10:
+                k_start = start_boundary_pctile + min_interval
+            if np.diff([np.quantile(spline_data[observed], end_boundary_pctile), 
+                        spline_data.max()]) > 1e-10:
                 n_intervals -= 1
-                k_end = 1. - (boundary_pctile + min_interval)
+                k_end = end_boundary_pctile - min_interval
         ensemble_knots = utils.sample_knots(n_intervals,
                                             b=np.array([[k_start, k_end]] * (n_intervals - 1)),
                                             d=np.array([[min_interval, 1]] * n_intervals),
                                             N=N)
         if k_start > 0.:
-            ensemble_knots = np.insert(ensemble_knots, 1, boundary_pctile, 1)
+            ensemble_knots = np.insert(ensemble_knots, 1, start_boundary_pctile, 1)
         if k_end < 1.:
-            ensemble_knots = np.insert(ensemble_knots, -1, 1. - boundary_pctile, 1)
+            ensemble_knots = np.insert(ensemble_knots, -1, end_boundary_pctile, 1)
             
         # rescale to observed
         if not observed.all():
@@ -148,7 +159,7 @@ class SplineFit:
         return ensemble_knots
 
     def fit_model(self):
-        self.mr_model.fit_model(inner_max_iter=30)
+        self.mr_model.fit_model(inner_max_iter=100)
         self.mr_model.score_model()
         self.coef_dicts = [self.get_submodel_coefficients(sm) for sm in self.mr_model.sub_models]
 

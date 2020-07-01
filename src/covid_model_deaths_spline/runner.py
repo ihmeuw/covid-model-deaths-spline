@@ -74,9 +74,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     model_settings = {}
     s1_settings = {'dep_var': 'Death rate',
                    'model_dir': str(model_dir),
-                   'indep_vars': [],
-                   'daily': False,
-                   'log': True}
+                   'indep_vars': []}
     cfr_settings = {'spline_var': 'Confirmed case rate',
                     'model_type': 'CFR'}
     cfr_settings.update(s1_settings)

@@ -13,12 +13,11 @@ from covid_model_deaths_spline.mr_spline import SplineFit
 
 
 def cfr_model(df: pd.DataFrame,
-              daily: bool,
-              log: bool,
               dep_var: str, spline_var: str, indep_vars: List[str],
               model_dir: str,
               model_type: str,
-              dow_holdout: int) -> pd.DataFrame:
+              dow_holdout: int,
+              daily: bool = False, log: bool = False) -> pd.DataFrame:
     # set up model
     df = df.copy()
 
@@ -41,6 +40,12 @@ def cfr_model(df: pd.DataFrame,
         adj_vars.update({orig_var:mod_var})
     df['Model log'] = log
     df['Model daily'] = daily
+    
+    # check assumptions
+    if log:
+        raise ValueError('Not expecting log CFR/HFR model.')
+    if daily:
+        raise ValueError('Not expecting daily CFR/HFR model.')
 
     # keep what we can use to predict (subset further to fitting dataset below)
     non_na = ~df[list(adj_vars.values())[1:]].isnull().any(axis=1)
@@ -49,55 +54,42 @@ def cfr_model(df: pd.DataFrame,
     # lose NAs in deaths as well for modeling; also below 5% of cases/deaths
     mod_df = df.copy()
     non_na = ~mod_df[adj_vars[dep_var]].isnull()
-    one_per_pop = 1 / df['population'][0]
-    post_pct_cases = mod_df[spline_var] >= (mod_df[spline_var].max() * 0.05)
-    post_pct_deaths = mod_df[dep_var] >= (mod_df[dep_var].max() * 0.05)
-    mod_df = mod_df.loc[non_na & post_pct_cases & post_pct_deaths,
+    #post_pct_cases = mod_df[spline_var] >= (mod_df[spline_var].max() * 0.05)
+    #post_pct_deaths = mod_df[dep_var] >= (mod_df[dep_var].max() * 0.05)
+    mod_df = mod_df.loc[non_na,  #  & post_pct_cases & post_pct_deaths
                         ['intercept'] + list(adj_vars.values())].reset_index(drop=True)
     
     # only run if at least a week of observations
     if len(mod_df) >= 7:
-        # run model and predict
+        # determine knots
+        n_model_days = len(mod_df)
+        n_i_knots = max(int(n_model_days / 8) - 1, 3)
+        
+        # spline settings
         spline_options = {
-            'spline_knots_type': 'frequency',
+            'spline_knots_type': 'domain',
             'spline_degree': 3,
             'spline_r_linear':True,
             'spline_l_linear':True,
+            'prior_beta_uniform': np.array([[0, np.inf]] * (n_i_knots + 1)).T
         }
         if not daily:
             spline_options.update({'prior_spline_monotonicity':'increasing'})
 
         # run model
-        prediction_pending = True
-        n_i_knots = 6
-        last_days_pctile = min(0.05, 5 / len(mod_df))
-        while prediction_pending:
-            try:
-                if len(mod_df) < n_i_knots * 3:
-                    raise ValueError(f'{model_type} model data contains fewer than {n_i_knots * 3} observations.')
-                mr_model = SplineFit(
-                    data=mod_df,
-                    dep_var=adj_vars[dep_var],
-                    spline_var=adj_vars[spline_var],
-                    indep_vars=['intercept'] + list(map(adj_vars.get, indep_vars)),
-                    n_i_knots=n_i_knots,
-                    spline_options=spline_options,
-                    scale_se=True,
-                    scale_se_floor_pctile=last_days_pctile
-                )
-                mr_model.fit_model()
-                prediction = mr_model.predict(df)
-                if not np.isnan(prediction).any():
-                    prediction_pending = False
-                else:
-                    raise ValueError('Prediction all nans (non-convergence).')
-            except Exception as e:
-                print(f'Elasticity model failed with {n_i_knots} knots.')
-                print(f'Error: {e}')
-            if n_i_knots == 1:
-                prediction_pending = False
-            else:
-                n_i_knots -= 1
+        mr_model = SplineFit(
+            data=mod_df,
+            dep_var=adj_vars[dep_var],
+            spline_var=adj_vars[spline_var],
+            indep_vars=['intercept'] + list(map(adj_vars.get, indep_vars)),
+            n_i_knots=n_i_knots,
+            spline_options=spline_options,
+            scale_se=False,
+            log=False,
+            se_default=np.sqrt(mod_df[adj_vars[dep_var]].max())
+        )
+        mr_model.fit_model()
+        prediction = mr_model.predict(df)
     else:
         prediction = np.array([np.nan] * len(df))
     

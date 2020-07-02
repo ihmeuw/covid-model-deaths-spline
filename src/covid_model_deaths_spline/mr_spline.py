@@ -110,11 +110,11 @@ class SplineFit:
                            spline_options: Dict, N: int = 20,
                            min_interval: float = 0.05) -> List[np.array]:
         # where are our fixed outer points
-        start_boundary_pctile = 0.025
-        if spline_data[observed].max() < spline_data.max():
-            end_boundary_pctile = 1.
-        else:
-            end_boundary_pctile = 0.975
+        # boundary_pctile = min(0.05, 4 / observed.sum())
+        # start_boundary_pctile = boundary_pctile
+        # end_boundary_pctile = 1. - boundary_pctile
+        start_boundary_pctile = 0.05
+        end_boundary_pctile = 0.95
             
         # sample, fixing first and last interior knots as specified
         n_intervals = n_i_knots + 1

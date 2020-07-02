@@ -208,7 +208,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
         x=x, n_i_knots=n_i_knots, subset_idx=max_1week_of_zeros_head,
         mono=False, limits=ln_daily_limits, tail_gprior=np.array([0, daily_gprior_std])
     )
-    ln_daily_mod_df['obs_se'] = 1. / np.exp(ln_daily_mod_df[obs_var]) ** 0.2
+    ln_daily_mod_df['obs_se'] = 1. / np.exp(ln_daily_mod_df['y']) ** 0.2
     se_floor = np.percentile(ln_daily_mod_df['obs_se'], 0.05)
     ln_daily_mod_df.loc[ln_daily_mod_df['obs_se'] < se_floor, 'obs_se'] = se_floor
     

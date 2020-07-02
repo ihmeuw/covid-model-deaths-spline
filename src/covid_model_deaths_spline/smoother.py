@@ -208,12 +208,6 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
         x=x, n_i_knots=n_i_knots, subset_idx=max_1week_of_zeros_head,
         mono=False, limits=ln_daily_limits, tail_gprior=np.array([0, daily_gprior_std])
     )
-    if ln_daily_mod_df['x'].unique().size < n_i_knots * 3:
-        raise ValueError(f'Smoother model data (daily) contains fewer than {n_i_knots * 3} days.')
-    ln_daily_smooth_y, ln_daily_model, ln_daily_mod_df = run_smoothing_model(
-        ln_daily_mod_df, n_i_knots, ln_daily_spline_options, True, pred_df
-    )
-    # ensemble_knots = ln_daily_model.ensemble_knots
     
     # prepare cumulative data and run model
     cumul_limits = np.array([0., np.inf]) # get_limits(ln_cumul_y[max_1week_of_zeros_head])
@@ -287,7 +281,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     smooth_draws = draw_cleanup(smooth_draws, smooth_y, x_pred, df)
     
     # get best knots and betas
-    best_settings = find_best_settings(ln_daily_model, ln_daily_spline_options)
+    best_settings = find_best_settings(cumul_model, ln_daily_spline_options)
 
     return noisy_draws, smooth_draws, best_settings
 

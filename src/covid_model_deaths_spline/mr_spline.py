@@ -111,10 +111,10 @@ class SplineFit:
                            min_interval: float = 0.05) -> List[np.array]:
         # where are our fixed outer points
         start_boundary_pctile = 0.025
-        if observed.all():
-            end_boundary_pctile = 0.975
-        else:
+        if spline_data[observed].max() < spline_data.max():
             end_boundary_pctile = 1.
+        else:
+            end_boundary_pctile = 0.975
             
         # sample, fixing first and last interior knots as specified
         n_intervals = n_i_knots + 1
@@ -159,7 +159,7 @@ class SplineFit:
         return ensemble_knots
 
     def fit_model(self):
-        self.mr_model.fit_model(inner_max_iter=100)
+        self.mr_model.fit_model(inner_max_iter=30)
         self.mr_model.score_model()
         self.coef_dicts = [self.get_submodel_coefficients(sm) for sm in self.mr_model.sub_models]
 

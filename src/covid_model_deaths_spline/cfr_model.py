@@ -42,6 +42,8 @@ def cfr_model(df: pd.DataFrame,
     df['Model daily'] = daily
     
     # check assumptions
+    if log:
+        raise ValueError('Not expecting log CFR/HFR model.')
     if daily:
         raise ValueError('Not expecting daily CFR/HFR model.')
 
@@ -71,12 +73,6 @@ def cfr_model(df: pd.DataFrame,
         }
         if not daily:
             spline_options.update({'prior_spline_monotonicity':'increasing'})
-        
-        # conditional settings
-        if log:
-            add_args = {'scale_se_floor_pctile': 0.}
-        else:
-            add_args = {'se_default': np.sqrt(mod_df[adj_vars[dep_var]].max())}
 
         # run model
         mr_model = SplineFit(
@@ -86,9 +82,9 @@ def cfr_model(df: pd.DataFrame,
             indep_vars=['intercept'] + list(map(adj_vars.get, indep_vars)),
             n_i_knots=n_i_knots,
             spline_options=spline_options,
-            scale_se=log,
-            log=log,
-            **add_args
+            scale_se=False,
+            log=False,
+            se_default=np.sqrt(mod_df[adj_vars[dep_var]].max())
         )
         mr_model.fit_model()
         prediction = mr_model.predict(df)

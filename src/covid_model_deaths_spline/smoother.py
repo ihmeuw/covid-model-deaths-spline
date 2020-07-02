@@ -267,15 +267,15 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     x_pred = x.max() + np.arange(dow_holdout + 1)[1:]
     x_pred = np.hstack([x, x_pred])
     refit_pred_df = pd.DataFrame({'intercept':1, 'x': x_pred})
-    refit_se = 1 / np.exp(smooth_y)**0.2
-    refit_se = np.mean(refit_se[-15:])
+    # refit_se = 1 / np.exp(smooth_y)**0.2
+    # refit_se = np.mean(refit_se[-14:])
     rescaled_ensemble_knots = rescale_k(ln_daily_mod_df['x'].values, x, ensemble_knots)
     _combiner = functools.partial(run_smoothing_model,
                                   n_i_knots=n_i_knots,
                                   spline_options=ln_daily_spline_options,
                                   pred_df=refit_pred_df,
                                   scale_se=False,
-                                  se_default=refit_se,
+                                  se_default=30.,
                                   ensemble_knots=rescaled_ensemble_knots,
                                   results_only=True)
     with multiprocessing.Pool(20) as p:

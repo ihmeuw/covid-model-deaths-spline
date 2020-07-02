@@ -107,7 +107,7 @@ class SplineFit:
         self.coef_dicts = None
         
     def get_ensemble_knots(self, n_i_knots: int, spline_data: np.array, observed: np.array,
-                           spline_options: Dict, N: int = 50,
+                           spline_options: Dict, N: int = 20,
                            min_interval: float = 0.05) -> List[np.array]:
         # where are our fixed outer points
         start_boundary_pctile = 0.025
@@ -159,7 +159,7 @@ class SplineFit:
         return ensemble_knots
 
     def fit_model(self):
-        self.mr_model.fit_model(inner_max_iter=30)
+        self.mr_model.fit_model(inner_max_iter=100)
         self.mr_model.score_model()
         self.coef_dicts = [self.get_submodel_coefficients(sm) for sm in self.mr_model.sub_models]
 

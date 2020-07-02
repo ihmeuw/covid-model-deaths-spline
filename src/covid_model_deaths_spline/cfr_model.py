@@ -100,6 +100,7 @@ def cfr_model(df: pd.DataFrame,
     if daily:
         df[f'Predicted death rate ({model_type})'] = df[f'Predicted death rate ({model_type})'].cumsum()
     
+    # save
     if mr_model is not None:
         with open(f"{model_dir}/{df['location_id'][0]}_{model_type}_{dow_holdout}.pkl", 'wb') as fwrite:
             pickle.dump(mr_model, fwrite, -1)

@@ -90,6 +90,7 @@ def cfr_model(df: pd.DataFrame,
         prediction = mr_model.predict(df)
     else:
         prediction = np.array([np.nan] * len(df))
+        mr_model = None
     
     # attach prediction
     df['Predicted model death rate'] = prediction
@@ -98,8 +99,9 @@ def cfr_model(df: pd.DataFrame,
         df[f'Predicted death rate ({model_type})'] = np.exp(df[f'Predicted death rate ({model_type})'])
     if daily:
         df[f'Predicted death rate ({model_type})'] = df[f'Predicted death rate ({model_type})'].cumsum()
-
-    with open(f"{model_dir}/{df['location_id'][0]}_{model_type}_{dow_holdout}.pkl", 'wb') as fwrite:
-        pickle.dump(mr_model, fwrite, -1)
+    
+    if mr_model is not None:
+        with open(f"{model_dir}/{df['location_id'][0]}_{model_type}_{dow_holdout}.pkl", 'wb') as fwrite:
+            pickle.dump(mr_model, fwrite, -1)
 
     return df

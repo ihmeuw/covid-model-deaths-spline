@@ -61,7 +61,7 @@ def cfr_model(df: pd.DataFrame,
     if len(mod_df) >= 7:
         # determine knots
         n_model_days = len(mod_df)
-        n_i_knots = max(int(n_model_days / 8) - 1, 3)
+        n_i_knots = max(int(n_model_days / 12) - 1, 3)
         
         # spline settings
         spline_options = {

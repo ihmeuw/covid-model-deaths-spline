@@ -206,6 +206,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     ln_daily_mod_df['obs_se'] = 1. / np.exp(ln_daily_mod_df['y']) ** 0.2
     se_floor = np.percentile(ln_daily_mod_df['obs_se'], 0.05)
     ln_daily_mod_df.loc[ln_daily_mod_df['obs_se'] < se_floor, 'obs_se'] = se_floor
+    ln_daily_mod_df.loc[~ln_daily_mod_df['observed'], 'obs_se'] *= 2
     
     # prepare cumulative data and run model
     cumul_limits = np.array([0., np.inf])
@@ -270,12 +271,15 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     refit_se = np.sqrt(cumul_mod_df['y'].max())
     rescaled_ensemble_knots = rescale_k(cumul_mod_df['x'].values, x, ensemble_knots)
     refit_spline_options = cumul_spline_options.copy()
+    refit_spline_options['spline_l_linear'] = False
     refit_spline_options['spline_r_linear'] = False
     refit_spline_options['prior_beta_uniform'] = np.hstack(
-        [refit_spline_options['prior_beta_uniform'],
+        [refit_spline_options['prior_beta_uniform'][:,:1],
+         refit_spline_options['prior_beta_uniform'],
          refit_spline_options['prior_beta_uniform'][:,-1:]]
     )
-    refit_spline_options['prior_spline_maxder_gaussian'][:, -1] = np.array([0, 1e-8])
+    refit_spline_options['prior_spline_maxder_gaussian'][:, 0] = np.array([0, refit_se/1000])
+    refit_spline_options['prior_spline_maxder_gaussian'][:, -1] = np.array([0, refit_se/1000])
     
     # run refit
     _combiner = functools.partial(run_smoothing_model,

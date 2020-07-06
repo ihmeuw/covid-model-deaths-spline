@@ -42,7 +42,7 @@ def model_iteration(location_id: int, model_data: pd.DataFrame, model_settings: 
             model_data[indicator].values.copy(), model_data[deaths_indicator].values.copy(), 
             dow_holdout
         )
-    model_data = model_data.loc[~model_data[indicators].isnull().all(axis=1)].reset_index(drop=True)
+    model_data = model_data.loc[~model_data[indicators + [deaths_indicator]].isnull().all(axis=1)].reset_index(drop=True)
     
     # first stage model(s)
     model_data_list = [model_data.loc[:,['location_id', 'location_name', 'Date',

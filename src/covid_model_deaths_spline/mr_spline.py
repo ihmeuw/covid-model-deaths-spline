@@ -1,8 +1,9 @@
 import numpy as np
 import pandas as pd
 from mrtool import MRData, LinearCovModel, MRBeRT, utils
-from typing import List, Dict
+from typing import List, Dict, Tuple
 
+import dill as pickle
 
 class SplineFit:
     """Spline fit class
@@ -106,15 +107,31 @@ class SplineFit:
         self.submodel_fits = None
         self.coef_dicts = None
         
+    def find_pctile(self, data: np.array, terminal_days: int, spline_knots_type: str) -> Tuple[float, float]:
+        data = np.sort(data)
+        if spline_knots_type == 'domain':
+            start_boundary_pctile = (data[terminal_days - 1] - data[0]) / data.ptp()
+            end_boundary_pctile = (data[-terminal_days] - data[0]) / data.ptp()
+        elif spline_knots_type == 'frequency':
+            start_boundary_pctile = terminal_days / 100
+            end_boundary_pctile = 1. - terminal_days / 100
+        
+        return start_boundary_pctile, end_boundary_pctile
+        
     def get_ensemble_knots(self, n_i_knots: int, spline_data: np.array, observed: np.array,
-                           spline_options: Dict, N: int = 20,
-                           min_interval: float = 0.05) -> List[np.array]:
+                           spline_options: Dict, N: int = 10,
+                           terminal_days: int = 4) -> List[np.array]:
         # where are our fixed outer points
-        # boundary_pctile = min(0.05, 4 / observed.sum())
-        # start_boundary_pctile = boundary_pctile
-        # end_boundary_pctile = 1. - boundary_pctile
-        start_boundary_pctile = 0.05
-        end_boundary_pctile = 0.95
+        if observed.sum() < 100:
+            start_boundary_pctile = terminal_days / 100
+            end_boundary_pctile = 1. - start_boundary_pctile
+            min_interval = terminal_days / 100
+        else:
+            start_boundary_pctile, end_boundary_pctile = self.find_pctile(
+                spline_data[observed], terminal_days, spline_options['spline_knots_type']
+            )
+            min_interval = terminal_days / observed.sum()
+        start_boundary_pctile = 0.
             
         # sample, fixing first and last interior knots as specified
         n_intervals = n_i_knots + 1
@@ -152,9 +169,9 @@ class SplineFit:
                     _ensemble_knots.append(knots)
             ensemble_knots = np.vstack(_ensemble_knots)
 
-            # don't use if only < 10 of potential knot placements are unique (i.e., eliminated in previous step)
-            if ensemble_knots.shape[0] < 10:
-                raise ValueError('Fewer than 10 knot options represent unique data values (frequency).')
+            # flag if no fully unique knot options (i.e., entries w/ duplicates eliminated in previous step)
+            if ensemble_knots.size == 0:
+                raise ValueError('Knot options do not find unique data values (frequency).')
         
         return ensemble_knots
 
@@ -200,7 +217,7 @@ class SplineFit:
             else:
                 mat = pred_data[[variable]].values
             preds += [mat.dot(coef)]
-
+        
         return np.sum(preds, axis=0)
 
     

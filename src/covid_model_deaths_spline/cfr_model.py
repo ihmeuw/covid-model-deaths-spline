@@ -42,8 +42,6 @@ def cfr_model(df: pd.DataFrame,
     df['Model daily'] = daily
     
     # check assumptions
-    if log:
-        raise ValueError('Not expecting log CFR/HFR model.')
     if daily:
         raise ValueError('Not expecting daily CFR/HFR model.')
 
@@ -58,6 +56,8 @@ def cfr_model(df: pd.DataFrame,
                         ['intercept'] + list(adj_vars.values())].reset_index(drop=True)
     
     # only run if at least a week of observations
+    prediction = np.array([np.nan] * len(df))
+    mr_model = None
     if len(mod_df) >= 7:
         # determine knots
         n_model_days = len(mod_df)
@@ -65,7 +65,7 @@ def cfr_model(df: pd.DataFrame,
         
         # spline settings
         spline_options = {
-            'spline_knots_type': 'domain',
+            'spline_knots_type': 'frequency',
             'spline_degree': 3,
             'spline_r_linear':True,
             'spline_l_linear':True,
@@ -74,23 +74,34 @@ def cfr_model(df: pd.DataFrame,
         if not daily:
             spline_options.update({'prior_spline_monotonicity':'increasing'})
 
-        # run model
-        mr_model = SplineFit(
-            data=mod_df,
-            dep_var=adj_vars[dep_var],
-            spline_var=adj_vars[spline_var],
-            indep_vars=['intercept'] + list(map(adj_vars.get, indep_vars)),
-            n_i_knots=n_i_knots,
-            spline_options=spline_options,
-            scale_se=False,
-            log=False,
-            se_default=np.sqrt(mod_df[adj_vars[dep_var]].max())
-        )
-        mr_model.fit_model()
-        prediction = mr_model.predict(df)
-    else:
-        prediction = np.array([np.nan] * len(df))
-        mr_model = None
+        # run model (if failure, might be because too many knots and constant case/hosp values; try again with fewer)
+        prediction_pending = True
+        while prediction_pending:
+            try:
+                mr_model = SplineFit(
+                    data=mod_df,
+                    dep_var=adj_vars[dep_var],
+                    spline_var=adj_vars[spline_var],
+                    indep_vars=['intercept'] + list(map(adj_vars.get, indep_vars)),
+                    n_i_knots=n_i_knots,
+                    spline_options=spline_options,
+                    scale_se=False,
+                    log=log,
+                    se_default=np.sqrt(np.abs(mod_df[adj_vars[dep_var]]).max())
+                )
+                mr_model.fit_model()
+                prediction = mr_model.predict(df)
+                if not np.isnan(prediction).any():
+                    prediction_pending = False
+                else:
+                    raise ValueError('Prediction all nans (non-convergence).')
+            except Exception as e:
+                print(f'{model_type} model failed with {n_i_knots} knots.')
+                print(f'Error: {e}')
+            if n_i_knots == 2:
+                prediction_pending = False
+            if prediction_pending:
+                n_i_knots -= 1
     
     # attach prediction
     df['Predicted model death rate'] = prediction

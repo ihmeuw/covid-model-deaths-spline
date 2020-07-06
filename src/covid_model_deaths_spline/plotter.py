@@ -151,14 +151,19 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame,
     )
     
     ## smoothed draws - ln(rate)
+    # floor
+    floor = 0.05 / df['population'].values[0]
+    
     # format draws
     draw_df = draw_df.copy()
     draw_cols = [col for col in draw_df.columns if col.startswith('draw_')]
-    draw_df[draw_cols] = np.diff(draw_df[draw_cols], axis=0, prepend=0)
+    draw_data = np.diff(draw_df[draw_cols], axis=0, prepend=0)
+    draw_data[draw_data < floor] = floor
+    draw_df[draw_cols] = draw_data
     
     # format model inputs
     df = df.copy()
-    floor = 0.05 / df['population'].values[0]
+    
     for input_var in ['Death rate', 'Predicted death rate (CFR)', 'Predicted death rate (HFR)']:
         df[input_var][1:] = np.diff(df[input_var])
         df.loc[df[input_var] < floor, input_var] = floor
@@ -207,11 +212,12 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame,
     ##
     
     location_name = df.loc[~df['location_name'].isnull(), 'location_name'].values
+    location_id = int(df.loc[~df['location_id'].isnull(), 'location_id'].values[0])
     if location_name.size > 0:
-        plot_label = location_name[0]
+        location_name = location_name[0]
+        plot_label = f'{location_name} [{location_id}]'
     else:
-        plot_label = df.loc[~df['location_id'].isnull(), 'location_id'].values[0]
-        plot_label = f'location_id: {plot_label}'
+        plot_label = str(location_id)
     fig.suptitle(plot_label, y=1.0025, fontsize=24)
     fig.tight_layout()
     if plot_file:

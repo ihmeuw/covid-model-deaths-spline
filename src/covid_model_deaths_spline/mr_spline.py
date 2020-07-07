@@ -5,6 +5,7 @@ from typing import List, Dict, Tuple
 
 import dill as pickle
 
+
 class SplineFit:
     """Spline fit class
     """

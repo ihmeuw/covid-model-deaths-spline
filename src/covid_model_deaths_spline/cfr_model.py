@@ -10,7 +10,7 @@ import tqdm
 import yaml
 
 from covid_model_deaths_spline.mr_spline import SplineFit
-from covid_model_deaths_spline.utils import KNOT_DAYS_RATIO, FLOOR_DEATHS, get_ln_data_se
+from covid_model_deaths_spline.utils import KNOT_DAYS_RATIO, FLOOR_DEATHS, get_data_se
 
 
 def cfr_model(df: pd.DataFrame,
@@ -18,7 +18,7 @@ def cfr_model(df: pd.DataFrame,
               model_dir: str,
               model_type: str,
               dow_holdout: int,
-              daily: bool = False, log: bool = False) -> pd.DataFrame:
+              daily: bool = False, log: bool = True) -> pd.DataFrame:
     # set up model
     df = df.copy()
 
@@ -43,6 +43,8 @@ def cfr_model(df: pd.DataFrame,
     df['Model daily'] = daily
     
     # check assumptions
+    if not log:
+        raise ValueError('Expecting log CFR/HFR model.')
     if daily:
         raise ValueError('Not expecting daily CFR/HFR model.')
 
@@ -50,9 +52,10 @@ def cfr_model(df: pd.DataFrame,
     non_na = ~df[list(adj_vars.values())[1:]].isnull().any(axis=1)
     df = df.loc[non_na].reset_index(drop=True)
     
-    # only keep 1 week of 2 cases ("imported case" threshold; prevents some duplicate values in spline)
-    max_1week_of_twos_head = (df[spline_var][::-1] <= 2 / df['population'][0]).cumsum()[::-1] <= 7
-    df = df.loc[max_1week_of_twos_head].reset_index(drop=True)
+    # only keep from last day of 2 cases ("imported case" threshold; prevents some duplicate values in spline)
+    last_day_of_two_cases = (df[spline_var][::-1] <= 2 / df['population'][0]).cumsum()[::-1] <= 1
+    last_day_of_zero_deaths = (df[spline_var][::-1] == 0 / df['population'][0]).cumsum()[::-1] <= 1
+    df = df.loc[last_day_of_two_cases & last_day_of_zero_deaths].reset_index(drop=True)
 
     # don't predict deaths before deaths data
     has_deaths = df[dep_var].notnull()
@@ -85,10 +88,7 @@ def cfr_model(df: pd.DataFrame,
             spline_options.update({'prior_spline_monotonicity':'increasing'})
             
         # data SE
-        if log:
-            mod_df['obs_se'] = get_ln_data_se(mod_df[adj_vars[dep_var]].values)
-        else:
-            mod_df['obs_se'] = 1 / df['population'][0]
+        mod_df['obs_se'] = get_data_se(mod_df[adj_vars[dep_var]].values)
         
         # run model (if failure, might be because too many knots and constant case/hosp values; try again with fewer)
         prediction_pending = True

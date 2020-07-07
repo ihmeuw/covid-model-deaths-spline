@@ -10,7 +10,7 @@ import pandas as pd
 import tqdm
 
 from covid_model_deaths_spline.mr_spline import SplineFit, rescale_k
-from covid_model_deaths_spline.utils import KNOT_DAYS_SYNTH, FLOOR_DEATHS, get_ln_data_se
+from covid_model_deaths_spline.utils import KNOT_DAYS_SYNTH, FLOOR_DEATHS, get_data_se
 
 
 def apply_floor(vals: np.array, floor_val: float) -> np.array:
@@ -100,12 +100,11 @@ def process_inputs(y: np.array, col_names: List[str],
     return mod_df, spline_options
 
 
-def draw_cleanup(draws: np.array,  # smooth_y: np.array, 
+def draw_cleanup(draws: np.array,
                  x: np.array, df: pd.DataFrame) -> pd.DataFrame:
     # set to linear, add up cumulative, and create dataframe
     draws -= np.var(draws, axis=1, keepdims=True) / 2
     draws = np.exp(draws)
-    #draws *= np.exp(smooth_y) / draws.mean(axis=1, keepdims=True)
     draws[draws * df['population'].values[0] < 1e-10] = 1e-10 / df['population'].values[0]
     draws = draws.cumsum(axis=0)
 
@@ -179,7 +178,6 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     total_deaths = (df['Death rate'] * df['population']).max()
     floor = FLOOR_DEATHS / df['population'][0]
     keep_idx = ~df[[obs_var] + pred_vars].isnull().all(axis=1)
-    max_1week_of_zeros_head = (df[obs_var][::-1] == 0).cumsum()[::-1] <= 7
     cumul_y = df.loc[keep_idx, [obs_var] + pred_vars].values
     ln_cumul_y = np.log(apply_floor(cumul_y.copy(), floor))
     daily_y = cumul_y.copy()
@@ -191,7 +189,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     x = df.index[keep_idx].values
     
     # number of knots
-    n_model_days = len(df.loc[df[obs_var].notnull()])  #  & max_1week_of_zeros_head
+    n_model_days = len(df.loc[df[obs_var].notnull()])
     n_i_knots = max(int(n_model_days / KNOT_DAYS_SYNTH) - 1, 3)
 
     # get deaths in last week to determine flat prior for daily
@@ -204,18 +202,18 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     ln_daily_limits = get_limits(ln_daily_y)
     ln_daily_mod_df, ln_daily_spline_options = process_inputs(
         y=ln_daily_y, col_names=[obs_var] + pred_vars,
-        x=x, n_i_knots=n_i_knots, #observed_days=max_1week_of_zeros_head,
+        x=x, n_i_knots=n_i_knots,
         mono=False, limits=ln_daily_limits, tail_gprior=np.array([0, gprior_std])
     )
-    ln_daily_mod_df['obs_se'] = get_ln_data_se(ln_daily_mod_df['y'].values)
+    ln_daily_mod_df['obs_se'] = get_data_se(ln_daily_mod_df['y'].values)
     
     # prepare cumulative data and run model
     ln_cumul_mod_df, ln_cumul_spline_options = process_inputs(
         y=ln_cumul_y, col_names=[obs_var] + pred_vars,
-        x=x, n_i_knots=n_i_knots, #observed_days=max_1week_of_zeros_head,
+        x=x, n_i_knots=n_i_knots,
         mono=True, limits=np.array([0., np.inf]), tail_gprior=np.array([0, gprior_std])
     )
-    ln_cumul_mod_df['obs_se'] = get_ln_data_se(ln_cumul_mod_df['y'].values)
+    ln_cumul_mod_df['obs_se'] = get_data_se(ln_cumul_mod_df['y'].values)
     ln_cumul_smooth_y, ln_cumul_model, ln_cumul_mod_df = run_smoothing_model(
         ln_cumul_mod_df, n_i_knots, ln_cumul_spline_options, pred_df,
         ensemble_knots=None, results_only=False, log=True
@@ -250,9 +248,6 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     rstd = mad * 1.4826
     ln_daily_smooth_y = np.array([ln_daily_smooth_y]).T
     noisy_draws = np.random.normal(ln_daily_smooth_y, rstd, (ln_daily_smooth_y.size, n_draws))
-    #noisy_draws = np.exp(noisy_draws)
-    #noisy_draws = np.cumsum(noisy_draws, axis=0)
-    #noisy_draws = np.log(noisy_draws)
 
     # refit data
     draw_mod_dfs = [
@@ -261,7 +256,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
             'intercept':1,
             'x':x,
             'observed':True,
-            'obs_se':get_ln_data_se(ln_daily_smooth_y.flatten())
+            'obs_se':get_data_se(ln_daily_smooth_y.flatten())
         })
         for nd in noisy_draws.T
     ]
@@ -286,11 +281,9 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     smooth_draws = np.vstack(smooth_draws).T
 
     # make pretty (in linear cumulative space)
-    #noisy_draws = np.log(np.diff(np.exp(noisy_draws), axis=0, prepend=0))
-    noisy_draws = draw_cleanup(noisy_draws,  # ln_daily_smooth_y, 
+    noisy_draws = draw_cleanup(noisy_draws,
                                x_pred, df)
-    #smooth_draws = np.log(np.diff(np.exp(smooth_draws), axis=0, prepend=0))
-    smooth_draws = draw_cleanup(smooth_draws,  # ln_daily_smooth_y, 
+    smooth_draws = draw_cleanup(smooth_draws,
                                 x_pred, df)
     
     # get best knots and betas

@@ -281,7 +281,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     refit_spline_options['prior_spline_maxder_gaussian'][:, 0] = np.array([0, data_se * 1e-2])
     if np.isinf(gprior_std):
         refit_spline_options['spline_r_linear'] = False
-        refit_spline_options['prior_spline_maxder_gaussian'][:, -1] = np.array([0, data_se * 1e-6])
+        refit_spline_options['prior_spline_maxder_gaussian'][:, -1] = np.array([0, data_se * 1e-8])
     
     # run refit
     _combiner = functools.partial(run_smoothing_model,

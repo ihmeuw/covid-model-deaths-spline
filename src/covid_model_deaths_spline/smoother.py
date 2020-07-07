@@ -49,7 +49,8 @@ def run_smoothing_model(mod_df: pd.DataFrame, n_i_knots: int, spline_options: Di
 
 def process_inputs(y: np.array, col_names: List[str], 
                    x: np.array, n_i_knots: int,  #observed_days: np.array,
-                   mono: bool, limits: np.array, tail_gprior: np.array):
+                   mono: bool, limits: np.array, tail_gprior: np.array,
+                   data_se: float):
     # get smoothed curve (dropping NAs, inflating variance for pseudo-deaths)
     obs_data = y.copy()
     obs_data[:,0] = 1
@@ -72,22 +73,27 @@ def process_inputs(y: np.array, col_names: List[str],
         'observed':obs_data
     })
     mod_df['observed'] = mod_df['observed'].astype(bool)
-    beta_prior = np.array([limits] * (n_i_knots + 1))
-    beta_prior[0] = np.array([0, np.inf]) # no intercept, so actually first beta
+
+    # basic settings
     spline_options={
             'spline_knots_type': 'domain',
             'spline_degree': 3,
             'spline_r_linear': True,
-            'spline_l_linear': True,
-            'prior_beta_uniform': beta_prior.T
+            'spline_l_linear': True
         }
+    
+    # cumulative or daily
     if mono:
         # settings for cumulative
         spline_options.update({'prior_spline_monotonicity': 'increasing'})
-        maxder_gprior = np.array([[0, np.inf]] * (n_i_knots + 1)).T
     else:
-        # settings for daily (i.e. refit - penalize wiggliness)
-        maxder_gprior = np.array([[0, np.inf]] + [[0, 0.01]] * (n_i_knots)).T
+        # settings for daily (no intercent, actually setting first beta increasing)
+        beta_prior = np.array([limits] * (n_i_knots + 1))
+        beta_prior[0] = np.array([0, np.inf])
+        spline_options.update({'prior_beta_uniform': beta_prior.T})
+        
+    # penalize wiggliness
+    maxder_gprior = np.array([[0, np.inf]] + [[0, data_se * 1e-4]] * (n_i_knots - 1) + [[0, np.inf]]).T
     if tail_gprior.size != 2:
         raise ValueError('`tail_gprior` must be in the format np.array([mu, sigma])')
     maxder_gprior[:,-1] = tail_gprior
@@ -160,7 +166,7 @@ def get_gprior_std(df: pd.DataFrame, last_interval_days: int = 7) -> float:
     daily_df['Deaths'] = daily_df['Death rate'] * daily_df['population']
     daily_df['Deaths'][1:] = np.diff(daily_df['Deaths'])
     last_interval_deaths = daily_df.loc[~daily_df['Deaths'].isnull()].iloc[-last_interval_days:]['Deaths'].sum()
-    if last_interval_deaths <= 5:
+    if last_interval_deaths <= 7:
         gprior_std = 1e-4
     else:
         gprior_std = np.inf
@@ -170,11 +176,12 @@ def get_gprior_std(df: pd.DataFrame, last_interval_days: int = 7) -> float:
 
 def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
              n_draws: int, dow_holdout: int,
-             floor_deaths: float = 0.01) -> Tuple[pd.DataFrame, pd.DataFrame]:
+             floor_deaths: float = 0.005) -> Tuple[pd.DataFrame, pd.DataFrame]:
     # extract inputs
     df = df.sort_values('Date').reset_index(drop=True)
     total_deaths = (df['Death rate'] * df['population']).max()
     floor = floor_deaths / df['population'][0]
+    data_se = np.sqrt(floor)
     keep_idx = ~df[[obs_var] + pred_vars].isnull().all(axis=1)
     max_1week_of_zeros_head = (df[obs_var][::-1] == 0).cumsum()[::-1] <= 7
     cumul_y = df.loc[keep_idx, [obs_var] + pred_vars].values
@@ -201,7 +208,8 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     ln_daily_mod_df, ln_daily_spline_options = process_inputs(
         y=ln_daily_y, col_names=[obs_var] + pred_vars,
         x=x, n_i_knots=n_i_knots, #observed_days=max_1week_of_zeros_head,
-        mono=False, limits=ln_daily_limits, tail_gprior=np.array([0, gprior_std])
+        mono=False, limits=ln_daily_limits, tail_gprior=np.array([0, gprior_std]),
+        data_se=data_se
     )
     ln_daily_mod_df['obs_se'] = 1. / np.exp(ln_daily_mod_df['y']) ** 0.2
     se_floor = np.percentile(ln_daily_mod_df['obs_se'], 0.05)
@@ -213,11 +221,12 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     cumul_mod_df, cumul_spline_options = process_inputs(
         y=cumul_y, col_names=[obs_var] + pred_vars,
         x=x, n_i_knots=n_i_knots, #observed_days=max_1week_of_zeros_head,
-        mono=True, limits=cumul_limits, tail_gprior=np.array([0, gprior_std])
+        mono=True, limits=cumul_limits, tail_gprior=np.array([0, gprior_std]),
+        data_se=data_se
     )
     cumul_smooth_y, cumul_model, cumul_mod_df = run_smoothing_model(
         cumul_mod_df, n_i_knots, cumul_spline_options, False, pred_df,
-        ensemble_knots=None, se_default=np.sqrt(cumul_mod_df['y'].max()),
+        ensemble_knots=None, se_default=data_se * 1e-2,
         results_only=False, log=False
     )
     ensemble_knots = cumul_model.ensemble_knots
@@ -225,7 +234,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     # set floor and convert to log dailiy
     ln_daily_smooth_y = cumul_smooth_y.copy()
     ln_daily_smooth_y[ln_daily_smooth_y < floor] = floor
-    ln_daily_smooth_y[1:] = np.diff(ln_daily_smooth_y, axis=0)
+    ln_daily_smooth_y = np.diff(ln_daily_smooth_y, axis=0, prepend=0)
     ln_daily_smooth_y = apply_floor(ln_daily_smooth_y, floor)
     ln_daily_smooth_y = np.log(ln_daily_smooth_y)
     
@@ -266,20 +275,13 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     refit_pred_df = pd.DataFrame({'intercept':1, 'x': x_pred})
     
     # refit settings
-    #refit_se = 1 / np.exp(ln_daily_smooth_y)**0.2
-    #refit_se = np.mean(refit_se[-21:])
-    refit_se = np.sqrt(cumul_mod_df['y'].max())
     rescaled_ensemble_knots = rescale_k(cumul_mod_df['x'].values, x, ensemble_knots)
     refit_spline_options = cumul_spline_options.copy()
     refit_spline_options['spline_l_linear'] = False
-    refit_spline_options['spline_r_linear'] = False
-    refit_spline_options['prior_beta_uniform'] = np.hstack(
-        [refit_spline_options['prior_beta_uniform'][:,:1],
-         refit_spline_options['prior_beta_uniform'],
-         refit_spline_options['prior_beta_uniform'][:,-1:]]
-    )
-    refit_spline_options['prior_spline_maxder_gaussian'][:, 0] = np.array([0, refit_se/1000])
-    refit_spline_options['prior_spline_maxder_gaussian'][:, -1] = np.array([0, refit_se/1000])
+    refit_spline_options['prior_spline_maxder_gaussian'][:, 0] = np.array([0, data_se * 1e-2])
+    if np.isinf(gprior_std):
+        refit_spline_options['spline_r_linear'] = False
+        refit_spline_options['prior_spline_maxder_gaussian'][:, -1] = np.array([0, data_se * 1e-6])
     
     # run refit
     _combiner = functools.partial(run_smoothing_model,
@@ -287,13 +289,18 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
                                   spline_options=refit_spline_options,
                                   pred_df=refit_pred_df,
                                   scale_se=False,
-                                  se_default=refit_se,
+                                  se_default=data_se * 1e-2,
                                   ensemble_knots=rescaled_ensemble_knots,
                                   results_only=True,
                                   log=False)
     with multiprocessing.Pool(20) as p:
         smooth_draws = list(tqdm.tqdm(p.imap(_combiner, draw_mod_dfs), total=n_draws))
     smooth_draws = np.vstack(smooth_draws).T
+    
+    # re-apply floor
+    smooth_draws = np.diff(smooth_draws, axis=0, prepend=0)
+    smooth_draws[smooth_draws < floor] = floor
+    smooth_draws = np.cumsum(smooth_draws, axis=0)
 
     # make pretty (in linear cumulative space)
     noisy_draws = draw_cleanup(noisy_draws,  # smooth_y, 

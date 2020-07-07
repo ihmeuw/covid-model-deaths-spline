@@ -66,15 +66,8 @@ class SplineFit:
                 name='intercept',
                 **prior_beta_uniform
             )]
-        if 'Model testing rate' in indep_vars:
-            cov_models += [LinearCovModel(
-                alt_cov='Model testing rate',
-                use_re=False,
-                prior_beta_uniform=np.array([-np.inf, 0.]),
-                name='Model testing rate'
-            )]
-        if any([i not in ['intercept', 'Model testing rate'] for i in indep_vars]):
-            bad_vars = [i for i in indep_vars if i not in ['intercept', 'Model testing rate']]
+        if any([i not in ['intercept'] for i in indep_vars]):  # , 'Model testing rate'
+            bad_vars = [i for i in indep_vars if i not in ['intercept']]  # , 'Model testing rate'
             raise ValueError(f"Unsupported independent variable(s) entered: {'; '.join(bad_vars)}")
             
         # get random knot placement
@@ -113,13 +106,13 @@ class SplineFit:
             start_boundary_pctile = (data[terminal_days - 1] - data[0]) / data.ptp()
             end_boundary_pctile = (data[-terminal_days] - data[0]) / data.ptp()
         elif spline_knots_type == 'frequency':
-            start_boundary_pctile = terminal_days / 100
-            end_boundary_pctile = 1. - terminal_days / 100
+            start_boundary_pctile = terminal_days / data.size
+            end_boundary_pctile = 1. - terminal_days / data.size
         
         return start_boundary_pctile, end_boundary_pctile
         
     def get_ensemble_knots(self, n_i_knots: int, spline_data: np.array, observed: np.array,
-                           spline_options: Dict, N: int = 10,
+                           spline_options: Dict, N: int = 24,
                            terminal_days: int = 4) -> List[np.array]:
         # where are our fixed outer points
         if observed.sum() < 100:

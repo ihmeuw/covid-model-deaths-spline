@@ -24,9 +24,9 @@ def cfr_model(df: pd.DataFrame,
     # add intercept
     df['intercept'] = 1
 
-    # log transform, setting floor of 0.05 per population
+    # log transform, setting floor of 0.005 per population
     df = df.sort_values('Date').reset_index(drop=True)
-    floor = 0.05 / df['population'].values[0]
+    floor = 0.005 / df['population'].values[0]
     adj_vars = {}
     for orig_var in [dep_var, spline_var] + indep_vars:
         mod_var = f'Model {orig_var.lower()}'
@@ -48,8 +48,18 @@ def cfr_model(df: pd.DataFrame,
     # keep what we can use to predict (subset further to fitting dataset below)
     non_na = ~df[list(adj_vars.values())[1:]].isnull().any(axis=1)
     df = df.loc[non_na].reset_index(drop=True)
+    
+    # only keep 1 week of 1s (duplicate values in spline)
+    max_1week_of_ones_head = (df[adj_vars[spline_var]][::-1] <= 1 / df['population'][0]).cumsum()[::-1] <= 7
+    df = df.loc[max_1week_of_ones_head].reset_index(drop=True)
 
-    # lose NAs in deaths as well for modeling
+    # don't predict deaths before deaths data
+    has_deaths = df[adj_vars[dep_var]].notnull()
+    has_deaths = np.cumsum(has_deaths)
+    has_deaths = has_deaths > 0
+    df = df.loc[has_deaths].reset_index(drop=True)
+    
+    # lose all NAs in deaths for modeling
     mod_df = df.copy()
     non_na = ~mod_df[adj_vars[dep_var]].isnull()
     mod_df = mod_df.loc[non_na,
@@ -68,12 +78,11 @@ def cfr_model(df: pd.DataFrame,
             'spline_knots_type': 'frequency',
             'spline_degree': 3,
             'spline_r_linear':True,
-            'spline_l_linear':True,
-            'prior_beta_uniform': np.array([[0, np.inf]] * (n_i_knots + 1)).T
+            'spline_l_linear':True
         }
         if not daily:
             spline_options.update({'prior_spline_monotonicity':'increasing'})
-
+        
         # run model (if failure, might be because too many knots and constant case/hosp values; try again with fewer)
         prediction_pending = True
         while prediction_pending:
@@ -87,7 +96,7 @@ def cfr_model(df: pd.DataFrame,
                     spline_options=spline_options,
                     scale_se=False,
                     log=log,
-                    se_default=np.sqrt(np.abs(mod_df[adj_vars[dep_var]]).max())
+                    se_default=np.sqrt(floor)
                 )
                 mr_model.fit_model()
                 prediction = mr_model.predict(df)

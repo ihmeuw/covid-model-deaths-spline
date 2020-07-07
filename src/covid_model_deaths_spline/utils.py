@@ -1,6 +1,7 @@
 import numpy as np
 
-KNOT_DAYS = 16
+KNOT_DAYS_RATIO = 12
+KNOT_DAYS_SYNTH = 16
 FLOOR_DEATHS = 0.005
 
 

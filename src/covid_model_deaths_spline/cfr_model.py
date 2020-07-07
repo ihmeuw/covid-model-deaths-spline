@@ -10,7 +10,7 @@ import tqdm
 import yaml
 
 from covid_model_deaths_spline.mr_spline import SplineFit
-from covid_model_deaths_spline.utils import KNOT_DAYS, FLOOR_DEATHS, get_ln_data_se
+from covid_model_deaths_spline.utils import KNOT_DAYS_RATIO, FLOOR_DEATHS, get_ln_data_se
 
 
 def cfr_model(df: pd.DataFrame,
@@ -18,7 +18,7 @@ def cfr_model(df: pd.DataFrame,
               model_dir: str,
               model_type: str,
               dow_holdout: int,
-              daily: bool = False, log: bool = True) -> pd.DataFrame:
+              daily: bool = False, log: bool = False) -> pd.DataFrame:
     # set up model
     df = df.copy()
 
@@ -50,9 +50,9 @@ def cfr_model(df: pd.DataFrame,
     non_na = ~df[list(adj_vars.values())[1:]].isnull().any(axis=1)
     df = df.loc[non_na].reset_index(drop=True)
     
-    # only keep 1 week of 1s (duplicate values in spline)
-    max_1week_of_ones_head = (df[spline_var][::-1] <= 1 / df['population'][0]).cumsum()[::-1] <= 7
-    df = df.loc[max_1week_of_ones_head].reset_index(drop=True)
+    # only keep 1 week of 2 cases ("imported case" threshold; prevents some duplicate values in spline)
+    max_1week_of_twos_head = (df[spline_var][::-1] <= 2 / df['population'][0]).cumsum()[::-1] <= 7
+    df = df.loc[max_1week_of_twos_head].reset_index(drop=True)
 
     # don't predict deaths before deaths data
     has_deaths = df[dep_var].notnull()
@@ -72,7 +72,7 @@ def cfr_model(df: pd.DataFrame,
     if len(mod_df) >= 7:
         # determine knots
         n_model_days = len(mod_df)
-        n_i_knots = max(int(n_model_days / KNOT_DAYS) - 1, 3)
+        n_i_knots = max(int(n_model_days / KNOT_DAYS_RATIO) - 1, 3)
         
         # spline settings
         spline_options = {

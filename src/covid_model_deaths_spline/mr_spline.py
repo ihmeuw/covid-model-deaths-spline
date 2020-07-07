@@ -101,8 +101,13 @@ class SplineFit:
         return start_boundary_pctile, end_boundary_pctile
         
     def get_ensemble_knots(self, n_i_knots: int, spline_data: np.array, observed: np.array,
-                           spline_options: Dict, N: int = 24,
+                           spline_options: Dict,
                            terminal_days: int = 4) -> List[np.array]:
+        # # number of submodels
+        # N = n_i_knots * 4
+        # N = max(48, N)
+        N = 30
+        
         # where are our fixed outer points
         if observed.sum() < 100:
             start_boundary_pctile = terminal_days / 100

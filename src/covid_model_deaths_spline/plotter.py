@@ -158,7 +158,6 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame,
     draw_df = draw_df.copy()
     draw_cols = [col for col in draw_df.columns if col.startswith('draw_')]
     draw_data = np.diff(draw_df[draw_cols], axis=0, prepend=0)
-    draw_data[draw_data < floor] = floor
     draw_df[draw_cols] = draw_data
     
     # format model inputs

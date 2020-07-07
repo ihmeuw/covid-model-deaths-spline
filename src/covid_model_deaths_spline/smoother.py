@@ -10,7 +10,7 @@ import pandas as pd
 import tqdm
 
 from covid_model_deaths_spline.mr_spline import SplineFit, rescale_k
-from covid_model_deaths_spline.utils import KNOT_DAYS, FLOOR_DEATHS, get_ln_data_se
+from covid_model_deaths_spline.utils import KNOT_DAYS_SYNTH, FLOOR_DEATHS, get_ln_data_se
 
 
 def apply_floor(vals: np.array, floor_val: float) -> np.array:
@@ -192,7 +192,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     
     # number of knots
     n_model_days = len(df.loc[df[obs_var].notnull()])  #  & max_1week_of_zeros_head
-    n_i_knots = max(int(n_model_days / KNOT_DAYS) - 1, 3)
+    n_i_knots = max(int(n_model_days / KNOT_DAYS_SYNTH) - 1, 3)
 
     # get deaths in last week to determine flat prior for daily
     gprior_std = get_gprior_std(df)

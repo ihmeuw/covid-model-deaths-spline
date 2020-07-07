@@ -16,23 +16,12 @@ class SplineFit:
                  n_i_knots: int,
                  ensemble_knots: np.array = None,
                  spline_options: Dict = dict(),
-                 scale_se: bool = True,
-                 scale_se_power: float = 0.2,
-                 scale_se_floor_pctile: float = 0.05,
                  observed_var: str = None, 
                  pseudo_se_multiplier: float = 1.,
                  se_default: float = 1.,
                  log: bool = True):
         # set up model data
         data = data.copy()
-        if scale_se:
-            if not log:
-                raise ValueError('Data SE scalar assumes logged dependent variable.')
-            data['obs_se'] = 1./np.exp(data[dep_var])**scale_se_power
-            se_floor = np.percentile(data['obs_se'], scale_se_floor_pctile)
-            data.loc[data['obs_se'] < se_floor, 'obs_se'] = se_floor
-        else:
-            data['obs_se'] = se_default
         if observed_var:
             if not data[observed_var].dtype == 'bool':
                 raise ValueError(f'Observed variable ({observed_var}) is not boolean.')

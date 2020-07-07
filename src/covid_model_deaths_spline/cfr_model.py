@@ -10,6 +10,7 @@ import tqdm
 import yaml
 
 from covid_model_deaths_spline.mr_spline import SplineFit
+from covid_model_deaths_spline.utils import KNOT_DAYS, FLOOR_DEATHS, get_ln_data_se
 
 
 def cfr_model(df: pd.DataFrame,
@@ -26,7 +27,7 @@ def cfr_model(df: pd.DataFrame,
 
     # log transform, setting floor of 0.005 per population
     df = df.sort_values('Date').reset_index(drop=True)
-    floor = 0.005 / df['population'].values[0]
+    floor = FLOOR_DEATHS / df['population'].values[0]
     adj_vars = {}
     for orig_var in [dep_var, spline_var] + indep_vars:
         mod_var = f'Model {orig_var.lower()}'
@@ -71,7 +72,7 @@ def cfr_model(df: pd.DataFrame,
     if len(mod_df) >= 7:
         # determine knots
         n_model_days = len(mod_df)
-        n_i_knots = max(int(n_model_days / 16) - 1, 3)
+        n_i_knots = max(int(n_model_days / KNOT_DAYS) - 1, 3)
         
         # spline settings
         spline_options = {
@@ -85,9 +86,9 @@ def cfr_model(df: pd.DataFrame,
             
         # data SE
         if log:
-            data_se = 1. / np.exp(mod_df[adj_vars[dep_var]].values) ** 0.2
+            mod_df['obs_se'] = get_ln_data_se(mod_df[adj_vars[dep_var]].values)
         else:
-            data_se = 1 / df['population'][0]
+            mod_df['obs_se'] = 1 / df['population'][0]
         
         # run model (if failure, might be because too many knots and constant case/hosp values; try again with fewer)
         prediction_pending = True
@@ -100,9 +101,7 @@ def cfr_model(df: pd.DataFrame,
                     indep_vars=['intercept'] + list(map(adj_vars.get, indep_vars)),
                     n_i_knots=n_i_knots,
                     spline_options=spline_options,
-                    scale_se=False,
-                    log=log,
-                    se_default=data_se
+                    log=log
                 )
                 mr_model.fit_model()
                 prediction = mr_model.predict(df)

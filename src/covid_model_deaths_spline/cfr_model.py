@@ -17,7 +17,7 @@ def cfr_model(df: pd.DataFrame,
               model_dir: str,
               model_type: str,
               dow_holdout: int,
-              daily: bool = False, log: bool = False) -> pd.DataFrame:
+              daily: bool = False, log: bool = True) -> pd.DataFrame:
     # set up model
     df = df.copy()
 
@@ -50,11 +50,11 @@ def cfr_model(df: pd.DataFrame,
     df = df.loc[non_na].reset_index(drop=True)
     
     # only keep 1 week of 1s (duplicate values in spline)
-    max_1week_of_ones_head = (df[adj_vars[spline_var]][::-1] <= 1 / df['population'][0]).cumsum()[::-1] <= 7
+    max_1week_of_ones_head = (df[spline_var][::-1] <= 1 / df['population'][0]).cumsum()[::-1] <= 7
     df = df.loc[max_1week_of_ones_head].reset_index(drop=True)
 
     # don't predict deaths before deaths data
-    has_deaths = df[adj_vars[dep_var]].notnull()
+    has_deaths = df[dep_var].notnull()
     has_deaths = np.cumsum(has_deaths)
     has_deaths = has_deaths > 0
     df = df.loc[has_deaths].reset_index(drop=True)
@@ -71,7 +71,7 @@ def cfr_model(df: pd.DataFrame,
     if len(mod_df) >= 7:
         # determine knots
         n_model_days = len(mod_df)
-        n_i_knots = max(int(n_model_days / 12) - 1, 3)
+        n_i_knots = max(int(n_model_days / 16) - 1, 3)
         
         # spline settings
         spline_options = {
@@ -82,6 +82,12 @@ def cfr_model(df: pd.DataFrame,
         }
         if not daily:
             spline_options.update({'prior_spline_monotonicity':'increasing'})
+            
+        # data SE
+        if log:
+            data_se = 1. / np.exp(mod_df[adj_vars[dep_var]].values) ** 0.2
+        else:
+            data_se = 1 / df['population'][0]
         
         # run model (if failure, might be because too many knots and constant case/hosp values; try again with fewer)
         prediction_pending = True
@@ -96,7 +102,7 @@ def cfr_model(df: pd.DataFrame,
                     spline_options=spline_options,
                     scale_se=False,
                     log=log,
-                    se_default=np.sqrt(floor)
+                    se_default=data_se
                 )
                 mr_model.fit_model()
                 prediction = mr_model.predict(df)

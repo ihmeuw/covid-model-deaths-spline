@@ -7,12 +7,35 @@ import pandas as pd
 import numpy as np
 
 
-def evil_doings(case_data: pd.DataFrame,
-                hosp_data: pd.DataFrame,
-                death_data: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, Dict[str, str]]:
+def evil_doings(full_data: pd.DataFrame) -> Tuple[pd.DataFrame, Dict]:
     # Record our sins
     manipulation_metadata = {}
-    return case_data, hosp_data, death_data, manipulation_metadata
+    drop_date = pd.Timestamp('2020-07-04')
+    case_drops = [44, 541, 546, 527]
+    death_drops = [44, 523, 524, 525, 526, 527, 528, 529, 530, 531, 532, 533, 534,
+                   535, 537, 538, 539, 541, 543, 544, 545, 546, 547, 548, 549, 550,
+                   551, 553, 554, 555, 557, 558, 559, 561, 562, 564, 565, 566, 567,
+                   568, 569, 570, 572, 573, 3539, 60886, 60887]
+    drop_cases = (full_data['Date'] == drop_date) & full_data['location_id'].isin(case_drops)
+    full_data.loc[drop_cases, 'Confirmed'] = np.nan
+    drop_deaths = (full_data['Date'] == drop_date) & full_data['location_id'].isin(death_drops)
+    full_data.loc[drop_deaths, 'Deaths'] = np.nan
+
+    manipulation_metadata['4th_of_july_madness'] = {'deaths_dropped': {'date': '2020_07_04', 'locations': death_drops},
+                                                    'cases_dropped': {'date': '2020_07_04', 'locations': case_drops}}
+
+    new_york = 555
+    spike_day = pd.Timestamp('2020-06-30')
+    drop_deaths = (full_data['location_id'] == new_york) & (full_data['Date'] >= spike_day)
+    full_data.loc[drop_deaths, 'Deaths'] = np.nan
+    manipulation_metadata['new_york_spike'] = {'deaths_dropped': {'date': 'days after 2020-06-30', 'locations': [new_york]}}
+
+    uk = 95
+    spike_day = pd.Timestamp('2020-07-02')
+    drop_cases = (full_data.location_id == uk) & (full_data['Date'] >= spike_day)
+    full_data.loc[drop_cases, 'Confirmed'] = np.nan
+    manipulation_metadata['uk_neg_spike'] = {'cases_dropped': {'date': 'days after 2020-07-02', 'locations': [uk]}}
+    return full_data, manipulation_metadata
 
 
 def load_most_detailed_locations(inputs_root: Path) -> pd.DataFrame:
@@ -87,10 +110,9 @@ def get_death_data(full_data: pd.DataFrame) -> pd.DataFrame:
 
 def get_population_data(input_root: Path, hierarchy: pd.DataFrame) -> pd.DataFrame:
     """Filter and clean population data."""
-    pop_df = pd.read_csv(input_root / 'age_pop.csv')
-    pop_df = pop_df.groupby('location_id', as_index=False)['population'].sum()
+    pop_df = pd.read_csv(input_root / 'output_measures' / 'population' / 'all_populations.csv')
+    pop_df = pop_df[(pop_df.age_group_id == 22) & (pop_df.sex_id == 3)]
     pop_df = hierarchy[['location_id', 'location_name']].merge(pop_df)
-    
     return pop_df
 
 
@@ -201,13 +223,13 @@ def fill_dates(df: pd.DataFrame, interp_var: str = None) -> pd.DataFrame:
     return df
 
 
-def apply_parents(failed_model_locations: List[int], hierarchy: pd.DataFrame, 
-                  smooth_draws: pd.DataFrame, model_data: pd.DataFrame, 
-                  pop_data: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:    
+def apply_parents(failed_model_locations: List[int], hierarchy: pd.DataFrame,
+                  smooth_draws: pd.DataFrame, model_data: pd.DataFrame,
+                  pop_data: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     failed_hierarchy = hierarchy.loc[hierarchy['location_id'].isin(failed_model_locations)].reset_index(drop=True)
     failed_hierarchy['parent_id'] = failed_hierarchy['path_to_top_parent'].apply(lambda x: int(x.split(',')[-2]))
     swip_swap = list(zip(failed_hierarchy['location_id'], failed_hierarchy['parent_id']))
-    
+
     filled_draws = []
     for child_id, parent_id in swip_swap:
         draws = smooth_draws.loc[smooth_draws['location_id'] == parent_id]
@@ -222,5 +244,5 @@ def apply_parents(failed_model_locations: List[int], hierarchy: pd.DataFrame,
     if filled_draws:
         filled_draws = pd.concat(filled_draws)
         smooth_draws = smooth_draws.append(filled_draws)
-        
+
     return smooth_draws, model_data

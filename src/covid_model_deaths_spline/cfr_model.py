@@ -18,7 +18,7 @@ def cfr_model(df: pd.DataFrame,
               model_dir: str,
               model_type: str,
               dow_holdout: int,
-              daily: bool = False, log: bool = True) -> pd.DataFrame:
+              daily: bool = False, log: bool = False) -> pd.DataFrame:
     # set up model
     df = df.copy()
 
@@ -43,8 +43,8 @@ def cfr_model(df: pd.DataFrame,
     df['Model daily'] = daily
     
     # check assumptions
-    if not log:
-        raise ValueError('Expecting log CFR/HFR model.')
+    # if not log:
+    #     raise ValueError('Expecting log CFR/HFR model.')
     if daily:
         raise ValueError('Not expecting daily CFR/HFR model.')
 
@@ -88,7 +88,10 @@ def cfr_model(df: pd.DataFrame,
             spline_options.update({'prior_spline_monotonicity':'increasing'})
             
         # data SE
-        mod_df['obs_se'] = get_data_se(mod_df[adj_vars[dep_var]].values)
+        if log:
+            mod_df['obs_se'] = get_data_se(mod_df[adj_vars[dep_var]].values)
+        else:
+            mod_df['obs_se'] = np.sqrt(mod_df[adj_vars[dep_var]].max())
         
         # run model (if failure, might be because too many knots and constant case/hosp values; try again with fewer)
         prediction_pending = True

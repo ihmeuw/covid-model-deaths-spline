@@ -28,15 +28,15 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     logger.debug("Loading and cleaning data.")
     hierarchy = data.load_most_detailed_locations(input_root)
     agg_hierarchy = data.load_aggregate_locations(input_root)
+
     full_data = data.load_full_data(input_root)
+    full_data, manipulation_metadata = data.evil_doings(full_data)
+    app_metadata.update({'data_manipulation': manipulation_metadata})
+
     case_data = data.get_shifted_data(full_data, 'Confirmed', 'Confirmed case rate')
     hosp_data = data.get_shifted_data(full_data, 'Hospitalizations', 'Hospitalization rate')
     death_data = data.get_death_data(full_data)
     pop_data = data.get_population_data(input_root, hierarchy)
-
-    logger.debug("Data manipulation")
-    case_data, hosp_data, death_data, manipulation_metadata = data.evil_doings(case_data, hosp_data, death_data)
-    app_metadata.update({'data_manipulation': manipulation_metadata})
 
     logger.debug(f"Dropping {holdout_days} days from the end of the data.")
     case_data = data.holdout_days(case_data, holdout_days)

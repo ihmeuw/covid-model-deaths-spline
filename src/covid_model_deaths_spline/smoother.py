@@ -22,7 +22,7 @@ def apply_floor(vals: np.array, floor_val: float) -> np.array:
 
 def run_smoothing_model(mod_df: pd.DataFrame, n_i_knots: int, spline_options: Dict,
                         pred_df: pd.DataFrame, ensemble_knots: np.array, 
-                        results_only: bool, log: bool, refit: bool) -> np.array:
+                        results_only: bool, log: bool) -> np.array:
     mr_model = SplineFit(
         data=mod_df,
         dep_var='y',
@@ -33,8 +33,7 @@ def run_smoothing_model(mod_df: pd.DataFrame, n_i_knots: int, spline_options: Di
         ensemble_knots=ensemble_knots,
         observed_var='observed',
         pseudo_se_multiplier=2.,
-        log=log,
-        refit=refit
+        log=log
     )
     mr_model.fit_model()
     smooth_y = mr_model.predict(pred_df)
@@ -78,7 +77,7 @@ def process_inputs(y: np.array, col_names: List[str],
             'spline_knots_type': 'domain',
             'spline_degree': 3,
             'spline_r_linear': True,
-            'spline_l_linear': True
+            'spline_l_linear': False
         }
     
     # cumulative or daily
@@ -86,13 +85,13 @@ def process_inputs(y: np.array, col_names: List[str],
         # settings for cumulative
         spline_options.update({'prior_spline_monotonicity': 'increasing'})
     else:
-        # settings for daily (no intercent, actually setting first beta increasing)
-        beta_prior = np.array([limits] * (n_i_knots + 1))
+        # settings for daily (set first beta increasing)
+        beta_prior = np.array([limits] * (n_i_knots + 2))
         beta_prior[0] = np.array([0, np.inf])
         spline_options.update({'prior_beta_uniform': beta_prior.T})
         
-        # penalize wiggliness
-        maxder_gprior = np.array([[0, np.inf]] + [[0, 0.05]] * (n_i_knots - 1) + [[0, np.inf]]).T
+        # stronger control for l-tail, dampen interior wiggliness
+        maxder_gprior = np.array([[0, 0.005]] + [[0, 0.05]] * (n_i_knots - 1) + [[0, np.inf]]).T
         if tail_gprior.size != 2:
             raise ValueError('`tail_gprior` must be in the format np.array([mu, sigma])')
         maxder_gprior[:,-1] = tail_gprior
@@ -187,7 +186,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     daily_y[daily_y_isna] = 0
     daily_y = np.diff(daily_y, axis=0, prepend=0)
     daily_y[daily_y_isna] = np.nan
-    ln_daily_y = np.log(apply_floor(daily_y, floor))
+    ln_daily_y = np.log(apply_floor(daily_y.copy(), floor))
     x = df.index[keep_idx].values
     
     # number of knots
@@ -218,16 +217,15 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     cumul_mod_df['obs_se'] = np.sqrt(cumul_mod_df['y'].max())
     cumul_smooth_y, cumul_model, cumul_mod_df = run_smoothing_model(
         cumul_mod_df, n_i_knots, cumul_spline_options, pred_df,
-        ensemble_knots=None, results_only=False, log=False, refit=False
+        ensemble_knots=None, results_only=False, log=False
     )
     ensemble_knots = cumul_model.ensemble_knots
     
     # set floor and convert to log daily
-    ln_daily_smooth_y = cumul_smooth_y.copy()
-    ln_daily_smooth_y[ln_daily_smooth_y < floor] = floor
-    ln_daily_smooth_y = np.diff(ln_daily_smooth_y, axis=0, prepend=0)
-    ln_daily_smooth_y = apply_floor(ln_daily_smooth_y, floor)
-    ln_daily_smooth_y = np.log(ln_daily_smooth_y)
+    daily_smooth_y = cumul_smooth_y.copy()
+    daily_smooth_y[daily_smooth_y < floor] = floor
+    daily_smooth_y = np.diff(daily_smooth_y, axis=0, prepend=0)
+    ln_daily_smooth_y = np.log(apply_floor(daily_smooth_y.copy(), floor))
     
     # same for dataset prediction
     smooth_y_insample = pd.pivot_table(cumul_mod_df, 
@@ -274,8 +272,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
                                   pred_df=refit_pred_df,
                                   ensemble_knots=rescaled_ensemble_knots,
                                   results_only=True,
-                                  log=True, 
-                                  refit=True)
+                                  log=True)
     with multiprocessing.Pool(int(F_THREAD)) as p:
         smooth_draws = list(tqdm.tqdm(p.imap(_combiner, draw_mod_dfs), total=n_draws))
     smooth_draws = np.vstack(smooth_draws).T

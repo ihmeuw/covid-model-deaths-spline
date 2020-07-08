@@ -20,8 +20,7 @@ class SplineFit:
                  observed_var: str = None, 
                  pseudo_se_multiplier: float = 1.,
                  se_default: float = 1.,
-                 log: bool = True,
-                 refit: bool = False):
+                 log: bool = True):
         # set up model data
         data = data.copy()
         if observed_var:
@@ -42,7 +41,6 @@ class SplineFit:
             col_study_id='study_id'
         )
         self.data = data
-        self.refit = refit
         
         # cov models
         cov_models = []
@@ -95,13 +93,13 @@ class SplineFit:
     def find_pctile(self, data: np.array, terminal_days: int, spline_knots_type: str) -> Tuple[float, float]:
         data = np.sort(data)
         if spline_knots_type == 'domain':
-            start_boundary_pctile = (data[terminal_days - 1] - data[0]) / data.ptp()
+            #start_boundary_pctile = (data[terminal_days - 1] - data[0]) / data.ptp()
             end_boundary_pctile = (data[-terminal_days] - data[0]) / data.ptp()
         elif spline_knots_type == 'frequency':
-            start_boundary_pctile = terminal_days / data.size
+            #start_boundary_pctile = terminal_days / data.size
             end_boundary_pctile = 1. - terminal_days / data.size
         
-        return start_boundary_pctile, end_boundary_pctile
+        return end_boundary_pctile  # start_boundary_pctile,
         
     def get_ensemble_knots(self, n_i_knots: int, spline_data: np.array, observed: np.array,
                            spline_options: Dict, terminal_days: int = 4) -> List[np.array]:
@@ -112,11 +110,12 @@ class SplineFit:
         
         # where are our fixed outer points
         if observed.sum() < 100:
-            start_boundary_pctile = terminal_days / 100
+            #start_boundary_pctile = terminal_days / 100
             end_boundary_pctile = 1. - start_boundary_pctile
             min_interval = terminal_days / 100
         else:
-            start_boundary_pctile, end_boundary_pctile = self.find_pctile(
+            # start_boundary_pctile, 
+            end_boundary_pctile = self.find_pctile(
                 spline_data[observed], terminal_days, spline_options['spline_knots_type']
             )
             min_interval = terminal_days / observed.sum()
@@ -165,10 +164,7 @@ class SplineFit:
         return ensemble_knots
 
     def fit_model(self):
-        if self.refit:
-            self.mr_model.fit_model(inner_max_iter=100)
-        else:
-            self.mr_model.fit_model(inner_max_iter=1000)
+        self.mr_model.fit_model(inner_max_iter=100)
         self.mr_model.score_model()
         self.coef_dicts = [self.get_submodel_coefficients(sm) for sm in self.mr_model.sub_models]
 

@@ -20,7 +20,8 @@ class SplineFit:
                  observed_var: str = None, 
                  pseudo_se_multiplier: float = 1.,
                  se_default: float = 1.,
-                 log: bool = True):
+                 log: bool = True,
+                 refit: bool = False):
         # set up model data
         data = data.copy()
         if observed_var:
@@ -41,6 +42,7 @@ class SplineFit:
             col_study_id='study_id'
         )
         self.data = data
+        self.refit = refit
         
         # cov models
         cov_models = []
@@ -163,7 +165,10 @@ class SplineFit:
         return ensemble_knots
 
     def fit_model(self):
-        self.mr_model.fit_model(inner_max_iter=100)
+        if self.refit:
+            self.mr_model.fit_model(inner_max_iter=100)
+        else:
+            self.mr_model.fit_model(inner_max_iter=1000)
         self.mr_model.score_model()
         self.coef_dicts = [self.get_submodel_coefficients(sm) for sm in self.mr_model.sub_models]
 

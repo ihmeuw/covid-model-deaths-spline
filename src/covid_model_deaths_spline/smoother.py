@@ -22,8 +22,7 @@ def apply_floor(vals: np.array, floor_val: float) -> np.array:
 
 def run_smoothing_model(mod_df: pd.DataFrame, n_i_knots: int, spline_options: Dict,
                         pred_df: pd.DataFrame, ensemble_knots: np.array, 
-                        results_only: bool,
-                        log: bool) -> np.array:
+                        results_only: bool, log: bool, refit: bool) -> np.array:
     mr_model = SplineFit(
         data=mod_df,
         dep_var='y',
@@ -34,7 +33,8 @@ def run_smoothing_model(mod_df: pd.DataFrame, n_i_knots: int, spline_options: Di
         ensemble_knots=ensemble_knots,
         observed_var='observed',
         pseudo_se_multiplier=2.,
-        log=log
+        log=log,
+        refit=refit
     )
     mr_model.fit_model()
     smooth_y = mr_model.predict(pred_df)
@@ -218,7 +218,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     cumul_mod_df['obs_se'] = np.sqrt(cumul_mod_df['y'].max())
     cumul_smooth_y, cumul_model, cumul_mod_df = run_smoothing_model(
         cumul_mod_df, n_i_knots, cumul_spline_options, pred_df,
-        ensemble_knots=None, results_only=False, log=False
+        ensemble_knots=None, results_only=False, log=False, refit=False
     )
     ensemble_knots = cumul_model.ensemble_knots
     
@@ -274,7 +274,8 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
                                   pred_df=refit_pred_df,
                                   ensemble_knots=rescaled_ensemble_knots,
                                   results_only=True,
-                                  log=True)
+                                  log=True, 
+                                  refit=True)
     with multiprocessing.Pool(int(F_THREAD)) as p:
         smooth_draws = list(tqdm.tqdm(p.imap(_combiner, draw_mod_dfs), total=n_draws))
     smooth_draws = np.vstack(smooth_draws).T

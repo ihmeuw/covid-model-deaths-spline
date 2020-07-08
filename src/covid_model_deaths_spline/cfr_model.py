@@ -82,7 +82,7 @@ def cfr_model(df: pd.DataFrame,
             'spline_knots_type': 'frequency',
             'spline_degree': 3,
             'spline_r_linear':True,
-            'spline_l_linear':True
+            'spline_l_linear':False
         }
         if not daily:
             spline_options.update({'prior_spline_monotonicity':'increasing'})

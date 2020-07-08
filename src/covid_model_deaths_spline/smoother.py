@@ -158,12 +158,13 @@ def find_best_settings(mr_model, spline_options):
     return Results(best_knots, best_betas, spline_options)
 
 
-def get_gprior_std(df: pd.DataFrame, last_interval_days: int = 7) -> float:
+def get_gprior_std(df: pd.DataFrame, last_interval_days: int = 7,
+                   last_interval_deaths_threshold: int = 21) -> float:
     daily_df = df.copy()
     daily_df['Deaths'] = daily_df['Death rate'] * daily_df['population']
     daily_df['Deaths'][1:] = np.diff(daily_df['Deaths'])
     last_interval_deaths = daily_df.loc[~daily_df['Deaths'].isnull()].iloc[-last_interval_days:]['Deaths'].sum()
-    if last_interval_deaths <= 7:
+    if last_interval_deaths <= last_interval_deaths_threshold:
         gprior_std = 1e-4
     else:
         gprior_std = np.inf
@@ -208,20 +209,17 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     ln_daily_mod_df['obs_se'] = get_data_se(ln_daily_mod_df['y'].values)
     
     # prepare cumulative data and run model
-    ln_cumul_mod_df, ln_cumul_spline_options = process_inputs(
-        y=ln_cumul_y, col_names=[obs_var] + pred_vars,
+    cumul_mod_df, cumul_spline_options = process_inputs(
+        y=cumul_y, col_names=[obs_var] + pred_vars,
         x=x, n_i_knots=n_i_knots,
         mono=True, limits=np.array([0., np.inf]), tail_gprior=np.array([0, gprior_std])
     )
-    ln_cumul_mod_df['obs_se'] = get_data_se(ln_cumul_mod_df['y'].values)
-    ln_cumul_smooth_y, ln_cumul_model, ln_cumul_mod_df = run_smoothing_model(
-        ln_cumul_mod_df, n_i_knots, ln_cumul_spline_options, pred_df,
-        ensemble_knots=None, results_only=False, log=True
+    cumul_mod_df['obs_se'] = np.sqrt(cumul_mod_df['y'].max())
+    cumul_smooth_y, cumul_model, cumul_mod_df = run_smoothing_model(
+        cumul_mod_df, n_i_knots, cumul_spline_options, pred_df,
+        ensemble_knots=None, results_only=False, log=False
     )
-    cumul_smooth_y = np.exp(ln_cumul_smooth_y)
-    cumul_mod_df = ln_cumul_mod_df[['x', 'data_type', 'smooth_y']]
-    cumul_mod_df['smooth_y'] = np.exp(cumul_mod_df['smooth_y'])
-    ensemble_knots = ln_cumul_model.ensemble_knots
+    ensemble_knots = cumul_model.ensemble_knots
     
     # set floor and convert to log daily
     ln_daily_smooth_y = cumul_smooth_y.copy()
@@ -287,7 +285,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
                                 x_pred, df)
     
     # get best knots and betas
-    best_settings = find_best_settings(ln_cumul_model, ln_daily_spline_options)
+    best_settings = find_best_settings(cumul_model, ln_daily_spline_options)
 
     return noisy_draws, smooth_draws, best_settings
 

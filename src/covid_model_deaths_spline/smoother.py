@@ -11,6 +11,7 @@ import tqdm
 
 from covid_model_deaths_spline.mr_spline import SplineFit, rescale_k
 from covid_model_deaths_spline.utils import KNOT_DAYS_SYNTH, FLOOR_DEATHS, get_data_se
+from covid_model_deaths_spline.cluster import F_THREAD
 
 
 def apply_floor(vals: np.array, floor_val: float) -> np.array:
@@ -274,7 +275,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
                                   ensemble_knots=rescaled_ensemble_knots,
                                   results_only=True,
                                   log=True)
-    with multiprocessing.Pool(20) as p:
+    with multiprocessing.Pool(int(F_THREAD)) as p:
         smooth_draws = list(tqdm.tqdm(p.imap(_combiner, draw_mod_dfs), total=n_draws))
     smooth_draws = np.vstack(smooth_draws).T
 

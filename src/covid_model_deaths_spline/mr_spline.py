@@ -111,7 +111,7 @@ class SplineFit:
         # where are our fixed outer points
         if observed.sum() < 100:
             #start_boundary_pctile = terminal_days / 100
-            end_boundary_pctile = 1. - start_boundary_pctile
+            end_boundary_pctile = 1. - (terminal_days / 100)
             min_interval = terminal_days / 100
         else:
             # start_boundary_pctile, 

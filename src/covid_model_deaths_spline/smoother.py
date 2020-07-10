@@ -10,7 +10,7 @@ import pandas as pd
 import tqdm
 
 from covid_model_deaths_spline.mr_spline import SplineFit, rescale_k
-from covid_model_deaths_spline.utils import KNOT_DAYS_SYNTH, FLOOR_DEATHS, get_data_se
+from covid_model_deaths_spline.utils import KNOT_DAYS, FLOOR_DEATHS, get_data_se
 from covid_model_deaths_spline.cluster import F_THREAD
 
 
@@ -91,10 +91,9 @@ def process_inputs(y: np.array, col_names: List[str],
         spline_options.update({'prior_beta_uniform': beta_prior.T})
         
         # stronger control for l-tail, dampen interior wiggliness
-        maxder_gprior = np.array([[0, 0.005]] + [[0, 0.05]] * (n_i_knots - 1) + [[0, np.inf]]).T
-        if tail_gprior.size != 2:
+        if tail_gprior.shape != (2,):
             raise ValueError('`tail_gprior` must be in the format np.array([mu, sigma])')
-        maxder_gprior[:,-1] = tail_gprior
+        maxder_gprior = np.array([[0, 0.005]] + [[0, 0.05]] * (n_i_knots - 1) + [tail_gprior]).T
         spline_options.update({'prior_spline_maxder_gaussian': maxder_gprior})
 
     return mod_df, spline_options
@@ -191,7 +190,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     
     # number of knots
     n_model_days = len(df.loc[df[obs_var].notnull()])
-    n_i_knots = max(int(n_model_days / KNOT_DAYS_SYNTH) - 1, 3)
+    n_i_knots = max(int(n_model_days / KNOT_DAYS) - 1, 3)
 
     # get deaths in last week to determine flat prior for daily
     gprior_std = get_gprior_std(df)
@@ -214,7 +213,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
         x=x, n_i_knots=n_i_knots,
         mono=True, limits=np.array([0., np.inf]), tail_gprior=np.array([0, gprior_std])
     )
-    cumul_mod_df['obs_se'] = np.sqrt(cumul_mod_df['y'].max())
+    cumul_mod_df['obs_se'] = np.sqrt(cumul_mod_df.loc[cumul_mod_df['observed'], 'y'].max())
     cumul_smooth_y, cumul_model, cumul_mod_df = run_smoothing_model(
         cumul_mod_df, n_i_knots, cumul_spline_options, pred_df,
         ensemble_knots=None, results_only=False, log=False

@@ -105,7 +105,7 @@ class SplineFit:
                            spline_options: Dict, terminal_days: int = 4) -> List[np.array]:
         # # number of submodels
         # N = n_i_knots * 4
-        # N = max(48, N)
+        # N = max(28, N)
         N = 40
         
         # where are our fixed outer points
@@ -126,12 +126,10 @@ class SplineFit:
         k_start = 0.
         k_end = 1.
         if n_i_knots >= 3:
-            if np.diff([spline_data.min(), 
-                        np.quantile(spline_data[observed], start_boundary_pctile)]) > 1e-10:
+            if np.quantile(spline_data[observed], start_boundary_pctile) > spline_data.min():
                 n_intervals -= 1
                 k_start = start_boundary_pctile + min_interval
-            if np.diff([np.quantile(spline_data[observed], end_boundary_pctile), 
-                        spline_data.max()]) > 1e-10:
+            if np.quantile(spline_data[observed], end_boundary_pctile) < spline_data.max():
                 n_intervals -= 1
                 k_end = end_boundary_pctile - min_interval
         ensemble_knots = utils.sample_knots(n_intervals,

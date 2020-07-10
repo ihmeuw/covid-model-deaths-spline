@@ -93,7 +93,7 @@ def process_inputs(y: np.array, col_names: List[str],
         # stronger control for l-tail, dampen interior wiggliness
         if tail_gprior.shape != (2,):
             raise ValueError('`tail_gprior` must be in the format np.array([mu, sigma])')
-        maxder_gprior = np.array([[0, 0.005]] + [[0, 0.05]] * (n_i_knots - 1) + [tail_gprior]).T
+        maxder_gprior = np.array([[0, 0.01]] + [[0, 0.1]] * (n_i_knots - 1) + [tail_gprior]).T
         spline_options.update({'prior_spline_maxder_gaussian': maxder_gprior})
 
     return mod_df, spline_options

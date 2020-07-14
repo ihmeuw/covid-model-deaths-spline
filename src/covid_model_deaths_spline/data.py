@@ -10,31 +10,10 @@ import numpy as np
 def evil_doings(full_data: pd.DataFrame) -> Tuple[pd.DataFrame, Dict]:
     # Record our sins
     manipulation_metadata = {}
-    drop_date = pd.Timestamp('2020-07-04')
-    case_drops = [44, 541, 546, 527]
-    death_drops = [44, 523, 524, 525, 526, 527, 528, 529, 530, 531, 532, 533, 534,
-                   535, 537, 538, 539, 541, 543, 544, 545, 546, 547, 548, 549, 550,
-                   551, 553, 554, 555, 557, 558, 559, 561, 562, 564, 565, 566, 567,
-                   568, 569, 570, 572, 573, 3539, 60886, 60887]
-    drop_cases = (full_data['Date'] == drop_date) & full_data['location_id'].isin(case_drops)
-    full_data.loc[drop_cases, 'Confirmed'] = np.nan
-    drop_deaths = (full_data['Date'] == drop_date) & full_data['location_id'].isin(death_drops)
-    full_data.loc[drop_deaths, 'Deaths'] = np.nan
-
-    manipulation_metadata['4th_of_july_madness'] = {'deaths_dropped': {'date': '2020_07_04', 'locations': death_drops},
-                                                    'cases_dropped': {'date': '2020_07_04', 'locations': case_drops}}
-
-    new_york = 555
-    spike_day = pd.Timestamp('2020-06-30')
-    drop_deaths = (full_data['location_id'] == new_york) & (full_data['Date'] >= spike_day)
-    full_data.loc[drop_deaths, 'Deaths'] = np.nan
-    manipulation_metadata['new_york_spike'] = {'deaths_dropped': {'date': 'days after 2020-06-30', 'locations': [new_york]}}
-
-    uk = 95
-    spike_day = pd.Timestamp('2020-07-02')
-    drop_cases = (full_data.location_id == uk) & (full_data['Date'] >= spike_day)
-    full_data.loc[drop_cases, 'Confirmed'] = np.nan
-    manipulation_metadata['uk_neg_spike'] = {'cases_dropped': {'date': 'days after 2020-07-02', 'locations': [uk]}}
+    alabama = full_data['location_id'] == 523
+    spike_date = full_data['Date'] == pd.Timestamp('2020-07-11')
+    full_data.loc[alabama & spike_date, 'Hospitalizations'] = np.nan
+    manipulation_metadata['alabama'] = {'date': '2020-07-11', 'note': 'AL changed it data source from state surveillance to hosptials directly'}
     return full_data, manipulation_metadata
 
 

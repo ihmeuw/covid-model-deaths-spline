@@ -73,8 +73,11 @@ def summarize_and_plot(agg_df: pd.DataFrame, model_data: pd.DataFrame,
     for location_id in summ_df['location_id'].unique():
         p_summ_df = summ_df.loc[summ_df['location_id'] == location_id].reset_index(drop=True)
         p_agg_df = agg_df.loc[agg_df['location_id'] == location_id].reset_index(drop=True)
-        plotter(p_summ_df,
-                list(compress([obs_var] + spline_vars, 
-                              (~p_summ_df[[obs_var] + spline_vars].isnull().all(axis=0)).to_list())),
-                p_agg_df,
-                f"{plot_dir}/{location_id}.pdf")
+        plotter(
+            p_summ_df,
+            list(compress([obs_var] + spline_vars, 
+                          (~p_summ_df[[obs_var] + spline_vars].isnull().all(axis=0)).to_list())),
+            p_agg_df,
+            ['Indirect'], [(0, len(draw_cols))],
+            f'{plot_dir}/{location_id}.pdf'
+        )

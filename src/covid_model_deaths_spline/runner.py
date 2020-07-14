@@ -6,14 +6,17 @@ import dill as pickle
 from loguru import logger
 import pandas as pd
 import yaml
+from collections import namedtuple
 
 from covid_model_deaths_spline import data, models, pdf_merger, cluster, summarize, aggregate
 
 warnings.simplefilter('ignore')
 
+PARENT_MODEL_LOCATIONS = [189]  # Tanzania
+
 
 def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root: Path,
-                holdout_days: int, n_draws: int):
+                holdout_days: int, dow_holdouts: int, n_draws: int):
     logger.debug("Setting up output directories.")
     model_dir = output_root / 'models'
     spline_settings_dir = output_root / 'spline_settings'
@@ -24,7 +27,6 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
 
     logger.debug("Loading and cleaning data.")
     hierarchy = data.load_most_detailed_locations(input_root)
-    hierarchy = hierarchy.loc[~hierarchy['location_id'].isin([60892, 60893, 7])]
     agg_hierarchy = data.load_aggregate_locations(input_root)
 
     full_data = data.load_full_data(input_root)
@@ -62,15 +64,16 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     model_data = model_data.sort_values(['location_id', 'Date']).reset_index(drop=True)
 
     logger.debug("Filter cases/hospitalizations based on threshold.")
-    model_data, no_cases_locs, no_hosp_locs = data.filter_to_epi_threshold(hierarchy, model_data)
+    model_data, dropped_locations, no_cases_locs, no_hosp_locs = data.filter_to_epi_threshold(
+        hierarchy, model_data, death_threshold=2, epi_threshold=10
+    )
+    app_metadata.update({'dropped_locations': dropped_locations})
 
     logger.debug("Preparing model settings.")
     model_settings = {}
     s1_settings = {'dep_var': 'Death rate',
                    'model_dir': str(model_dir),
-                   'indep_vars': [],
-                   'daily': False,
-                   'log': True}
+                   'indep_vars': []}
     cfr_settings = {'spline_var': 'Confirmed case rate',
                     'model_type': 'CFR'}
     cfr_settings.update(s1_settings)
@@ -82,9 +85,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     smoother_settings = {'obs_var': 'Death rate',
                          'pred_vars': ['Predicted death rate (CFR)', 'Predicted death rate (HFR)'],
                          'spline_vars': ['Confirmed case rate', 'Hospitalization rate'],
-                         'spline_settings_dir': str(spline_settings_dir),
-                         'plot_dir': str(plot_dir),
-                         'n_draws': n_draws}
+                         'spline_settings_dir': str(spline_settings_dir)}
     model_settings.update({'smoother':smoother_settings})
     model_settings['no_cases_locs'] = no_cases_locs
     model_settings['no_hosp_locs'] = no_hosp_locs
@@ -102,8 +103,10 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     with settings_path.open('w') as settings_file:
         yaml.dump(model_settings, settings_file)
     job_args_map = {
-        location_id: [models.__file__, location_id, data_path, settings_path, cluster.OMP_NUM_THREADS]
-        for location_id in model_data['location_id'].unique()
+        location_id: [models.__file__,
+                      location_id, data_path, settings_path, dow_holdouts, str(plot_dir), n_draws,
+                      cluster.OMP_NUM_THREADS]
+        for location_id in model_data['location_id'].unique() if location_id not in PARENT_MODEL_LOCATIONS
     }
     cluster.run_cluster_jobs('covid_death_models', output_root, job_args_map)
 
@@ -112,32 +115,29 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     for result_path in results_path.iterdir():
         with result_path.open('rb') as result_file:
             results.append(pickle.load(result_file))
-    post_model_data = pd.concat([r['model_data'] for r in results]).reset_index(drop=True)
-    noisy_draws = pd.concat([r['noisy_draws'] for r in results]).reset_index(drop=True)
-    smooth_draws = pd.concat([r['smooth_draws'] for r in results]).reset_index(drop=True)
-    parent_model_locations = (hierarchy
-                              .loc[~hierarchy['location_id'].isin(post_model_data['location_id'].to_list()),
+    post_model_data = pd.concat([r.model_data for r in results]).reset_index(drop=True)
+    noisy_draws = pd.concat([r.noisy_draws for r in results]).reset_index(drop=True)
+    smooth_draws = pd.concat([r.smooth_draws for r in results]).reset_index(drop=True)
+    failed_model_locations = (model_data
+                              .loc[~model_data['location_id'].isin(post_model_data['location_id'].to_list()),
                                    'location_id']
-                              .tolist())
-    for location_id in [175, 189]:  # Burundi, Tanzania
-        if location_id in hierarchy['location_id'].to_list() and not location_id in parent_model_locations:
-            parent_model_locations += [location_id]
-    app_metadata.update({'parent_model_locations': parent_model_locations})
-    post_model_data = post_model_data.loc[~post_model_data['location_id'].isin(parent_model_locations)]
-    noisy_draws = noisy_draws.loc[~noisy_draws['location_id'].isin(parent_model_locations)]
-    smooth_draws = smooth_draws.loc[~smooth_draws['location_id'].isin(parent_model_locations)]
-    model_data = post_model_data.append(model_data.loc[model_data['location_id'].isin(parent_model_locations)])
+                              .unique().tolist())
+    failed_model_locations = [l for l in failed_model_locations if l not in PARENT_MODEL_LOCATIONS]
+    failed_model_locations = [l for l in failed_model_locations if l in hierarchy['location_id'].to_list()]
+    app_metadata.update({'failed_model_locations': failed_model_locations})
+    model_data = post_model_data.append(model_data.loc[model_data['location_id'].isin(PARENT_MODEL_LOCATIONS)])
     obs_var = smoother_settings['obs_var']
     spline_vars = smoother_settings['spline_vars']
 
-    logger.debug("Fill failed model locations with parent and plot them.")
-    smooth_draws, model_data = data.apply_parents(parent_model_locations, hierarchy, smooth_draws,
+    logger.debug("Fill specified model locations with parent and plot them.")
+    smooth_draws, model_data = data.apply_parents(PARENT_MODEL_LOCATIONS, hierarchy, smooth_draws,
                                                   model_data, pop_data)
     summarize.summarize_and_plot(
-        smooth_draws.loc[smooth_draws['location_id'].isin(parent_model_locations)].rename(columns={'date': 'Date'}),
-        model_data.loc[model_data['location_id'].isin(parent_model_locations)],
+        smooth_draws.loc[smooth_draws['location_id'].isin(PARENT_MODEL_LOCATIONS)].rename(columns={'date': 'Date'}),
+        model_data.loc[model_data['location_id'].isin(PARENT_MODEL_LOCATIONS)],
         str(plot_dir), obs_var=obs_var, spline_vars=spline_vars, pop_data=pop_data
     )
+    app_metadata.update({'parent_model_locations': PARENT_MODEL_LOCATIONS})
 
     logger.debug("Make post-model aggregates and plot them.")
     agg_locations = [aggregate.Location(1, 'Global')] + agg_locations

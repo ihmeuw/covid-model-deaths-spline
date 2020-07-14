@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -8,6 +8,17 @@ import seaborn as sns
 
 import warnings
 warnings.simplefilter('ignore')
+
+DOY_COLORS = {
+    'Sunday':'grey',
+    'Monday':'indianred',
+    'Tuesday':'peru',
+    'Wednesday':'olive',
+    'Thursday':'seagreen',
+    'Friday':'royalblue',
+    'Saturday':'darkmagenta'
+}
+
 
 def get_plot_idx(i: int, n_vars: int):
     if n_vars > 1:
@@ -19,7 +30,9 @@ def get_plot_idx(i: int, n_vars: int):
     return top_idx, bottom_idx
 
 
-def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame, plot_file: str = None):
+def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame,
+            model_labels: List[str], draw_ranges: List[Tuple[int, int]],
+            plot_file: str = None):
     # set up plot
     sns.set_style('whitegrid')
     n_cols = max(len(plot_vars), 1)
@@ -43,34 +56,32 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame, plot_
     # cases
     indep_idx = 1
     if 'Confirmed case rate' in plot_vars:
-        #plt.subplot(int(f'{n_rows}{n_cols}{indep_idx}'))
         ax_cfr = fig.add_subplot(gs[0, indep_idx])
         ax_cfr.scatter(df['Confirmed case rate'],
-                                 df['Death rate'],
-                                 **raw_points)
+                       df['Death rate'],
+                       **raw_points)
         ax_cfr.plot(df['Confirmed case rate'],
-                              df['Predicted death rate (CFR)'],
-                              **cfr_lines)
+                    df['Predicted death rate (CFR)'],
+                    **cfr_lines)
         ax_cfr.plot(df['Confirmed case rate'],
-                              df['Smoothed predicted death rate'],
-                              **smoothed_pred_lines)    
+                    df['Smoothed predicted death rate'],
+                    **smoothed_pred_lines)    
         ax_cfr.set_xlabel('Cumulative case rate', fontsize=14)
         ax_cfr.set_ylabel('Cumulative death rate', fontsize=14)
         indep_idx += 1
 
     # hospitalizations
     if 'Hospitalization rate' in plot_vars:
-        #plt.subplot(int(f'{n_rows}{n_cols}{indep_idx}'))
         ax_hfr = fig.add_subplot(gs[0, indep_idx])
         ax_hfr.scatter(df['Hospitalization rate'],
-                                 df['Death rate'],
-                                 **raw_points)
+                       df['Death rate'],
+                       **raw_points)
         ax_hfr.plot(df['Hospitalization rate'],
-                              df['Predicted death rate (HFR)'],
-                              **hfr_lines)
+                    df['Predicted death rate (HFR)'],
+                    **hfr_lines)
         ax_hfr.plot(df['Hospitalization rate'],
-                              df['Smoothed predicted death rate'],
-                              **smoothed_pred_lines)
+                    df['Smoothed predicted death rate'],
+                    **smoothed_pred_lines)
         ax_hfr.set_xlabel('Cumulative hospitalization rate', fontsize=14)
         ax_hfr.set_ylabel('Cumulative death rate', fontsize=14)
         
@@ -83,7 +94,6 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame, plot_
         plot_label = raw_variable.lower().replace(' rate', 's')
         if ~df[raw_variable].isnull().all():
             if 'death' in smooth_variable.lower():
-                #plt.subplot(int(f'{n_rows}{n_cols}{i + 1}'))
                 ax_cumul = fig.add_subplot(gs[top_idx])
                 ax_cumul.plot(df['Date'], df[raw_variable] * df['population'], **raw_lines)
                 ax_cumul.scatter(df['Date'], df[raw_variable] * df['population'], **raw_points)
@@ -92,14 +102,13 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame, plot_
 
 
             # daily
-            #plt.subplot(int(f'{n_rows}{n_cols}{i + 1 + n_cols}'))
             ax_daily = fig.add_subplot(gs[bottom_idx])
-            ax_daily.plot(df['Date'][1:],
-                                np.diff(df[raw_variable]) * df['population'][1:],
-                                **raw_lines)
-            ax_daily.scatter(df['Date'][1:],
-                                   np.diff(df[raw_variable]) * df['population'][1:],
-                                   **raw_points)
+            ax_daily.plot(df['Date'],
+                          np.diff(df[raw_variable], prepend=0) * df['population'],
+                          **raw_lines)
+            ax_daily.scatter(df['Date'],
+                             np.diff(df[raw_variable], prepend=0) * df['population'],
+                             **raw_points)
             ax_daily.axhline(0, color='black', alpha=0.5)
             if 'death' in smooth_variable.lower():
                 ax_daily.set_xlabel('Date', fontsize=14)
@@ -108,15 +117,14 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame, plot_
             ax_daily.set_ylabel(f'Daily {plot_label}', fontsize=14)
     
     # predictions - cumul
-    #plt.subplot(int(f'{n_rows}{n_cols}{1}'))
     ax_cumul = fig.add_subplot(gs[0, 0])
     ax_cumul.plot(df['Date'], df['Predicted death rate (CFR)'] * df['population'],
-                     **cfr_lines)
+                  **cfr_lines)
     ax_cumul.plot(df['Date'], df['Predicted death rate (HFR)'] * df['population'],
-                     **hfr_lines)
+                  **hfr_lines)
     ax_cumul.plot(df['Date'],
-                 df['Smoothed predicted death rate'] * df['population'],
-                 **smoothed_pred_lines)
+                  df['Smoothed predicted death rate'] * df['population'],
+                  **smoothed_pred_lines)
     ax_cumul.fill_between(
         df['Date'],
         df['Smoothed predicted death rate lower'] * df['population'],
@@ -124,18 +132,17 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame, plot_
         **smoothed_pred_area
     )
     
-    # predictions - dailt
-    #plt.subplot(int(f'{n_rows}{n_cols}{1+n_cols}'))
+    # predictions - daily
     ax_daily = fig.add_subplot(gs[1, 0])
-    ax_daily.plot(df['Date'][1:],
-                        np.diff(df['Predicted death rate (CFR)']) * df['population'][1:],
-                        **cfr_lines)
-    ax_daily.plot(df['Date'][1:],
-                        np.diff(df['Predicted death rate (HFR)']) * df['population'][1:],
-                        **hfr_lines)
     ax_daily.plot(df['Date'],
-                        df['Smoothed predicted daily death rate'] * df['population'],
-                        **smoothed_pred_lines)
+                  np.diff(df['Predicted death rate (CFR)'], prepend=0) * df['population'],
+                  **cfr_lines)
+    ax_daily.plot(df['Date'],
+                  np.diff(df['Predicted death rate (HFR)'], prepend=0) * df['population'],
+                  **hfr_lines)
+    ax_daily.plot(df['Date'],
+                  df['Smoothed predicted daily death rate'] * df['population'],
+                  **smoothed_pred_lines)
     ax_daily.fill_between(
         df['Date'],
         df['Smoothed predicted daily death rate lower'] * df['population'],
@@ -144,29 +151,50 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame, plot_
     )
     
     ## smoothed draws - ln(rate)
+    # floor
+    floor = 0.05 / df['population'].values[0]
+    
     # format draws
     draw_df = draw_df.copy()
     draw_cols = [col for col in draw_df.columns if col.startswith('draw_')]
-    draw_df.iloc[1:][draw_cols] = np.diff(draw_df[draw_cols], axis=0)
-    draw_df[draw_cols] = np.log(draw_df[draw_cols])
+    draw_data = np.diff(draw_df[draw_cols], axis=0, prepend=0)
+    draw_df[draw_cols] = draw_data
     
     # format model inputs
     df = df.copy()
-    floor = 0.01 / df['population'].values[0]
+    
     for input_var in ['Death rate', 'Predicted death rate (CFR)', 'Predicted death rate (HFR)']:
         df[input_var][1:] = np.diff(df[input_var])
         df.loc[df[input_var] < floor, input_var] = floor
     
-    # plot
+    # plot draws
+    show_draws = np.arange(0, len(draw_cols), 10).tolist()
+    show_draws += [len(draw_cols) - 1]
     ax_draws = fig.add_subplot(gs[2:, 0:])
+    for model_label, draw_range in zip(model_labels, draw_ranges):
+        # which day
+        if len(model_labels) > 1:
+            doy = model_label[model_label.find('(') + 1:model_label.find(')')]
+            color = DOY_COLORS[doy]
+        else:
+            color = 'firebrick'
+        # submodel draws
+        ax_draws.plot(draw_df['Date'],
+                      np.log(draw_df[[f'draw_{d}' for d in range(*draw_range) if d in show_draws]]),
+                      color=color, alpha=0.1)
+        # submodel means
+        ax_draws.plot(draw_df['Date'],
+                      np.log(draw_df[[f'draw_{d}' for d in range(*draw_range)]]).mean(axis=1),
+                      color=color, linewidth=3, label=model_label)
+    # overall mean
     ax_draws.plot(draw_df['Date'],
-             draw_df[draw_cols],
-             color='firebrick', alpha=0.025)
-    ax_draws.plot(draw_df['Date'],
-             draw_df[draw_cols].mean(axis=1),
-             color='firebrick', linestyle='--', linewidth=3)
-    ax_draws.set_ylabel('ln(daily death rate)', fontsize=14)
+                  np.log(draw_df[draw_cols]).mean(axis=1),
+                  color='black', linestyle='--', linewidth=3)
+    ax_draws.set_ylabel('ln(daily death rate)', fontsize=18)
+    ax_draws.legend(loc=2, ncol=1, fontsize=16)
     ax_draws.set_xlabel('Date', fontsize=14)
+    
+    # plot data
     if any(~df['Death rate'].isnull()):
         ax_draws.plot(df['Date'],
                       np.log(df['Death rate']),
@@ -183,11 +211,12 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame, plot_
     ##
     
     location_name = df.loc[~df['location_name'].isnull(), 'location_name'].values
+    location_id = int(df.loc[~df['location_id'].isnull(), 'location_id'].values[0])
     if location_name.size > 0:
-        plot_label = location_name[0]
+        location_name = location_name[0]
+        plot_label = f'{location_name} [{location_id}]'
     else:
-        plot_label = df.loc[~df['location_id'].isnull(), 'location_id'].values[0]
-        plot_label = f'location_id: {plot_label}'
+        plot_label = str(location_id)
     fig.suptitle(plot_label, y=1.0025, fontsize=24)
     fig.tight_layout()
     if plot_file:

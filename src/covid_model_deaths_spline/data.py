@@ -10,31 +10,10 @@ import numpy as np
 def evil_doings(full_data: pd.DataFrame) -> Tuple[pd.DataFrame, Dict]:
     # Record our sins
     manipulation_metadata = {}
-    drop_date = pd.Timestamp('2020-07-04')
-    case_drops = [44, 541, 546, 527]
-    death_drops = [44, 523, 524, 525, 526, 527, 528, 529, 530, 531, 532, 533, 534,
-                   535, 537, 538, 539, 541, 543, 544, 545, 546, 547, 548, 549, 550,
-                   551, 553, 554, 555, 557, 558, 559, 561, 562, 564, 565, 566, 567,
-                   568, 569, 570, 572, 573, 3539, 60886, 60887]
-    drop_cases = (full_data['Date'] == drop_date) & full_data['location_id'].isin(case_drops)
-    full_data.loc[drop_cases, 'Confirmed'] = np.nan
-    drop_deaths = (full_data['Date'] == drop_date) & full_data['location_id'].isin(death_drops)
-    full_data.loc[drop_deaths, 'Deaths'] = np.nan
-
-    manipulation_metadata['4th_of_july_madness'] = {'deaths_dropped': {'date': '2020_07_04', 'locations': death_drops},
-                                                    'cases_dropped': {'date': '2020_07_04', 'locations': case_drops}}
-
-    new_york = 555
-    spike_day = pd.Timestamp('2020-06-30')
-    drop_deaths = (full_data['location_id'] == new_york) & (full_data['Date'] >= spike_day)
-    full_data.loc[drop_deaths, 'Deaths'] = np.nan
-    manipulation_metadata['new_york_spike'] = {'deaths_dropped': {'date': 'days after 2020-06-30', 'locations': [new_york]}}
-
-    uk = 95
-    spike_day = pd.Timestamp('2020-07-02')
-    drop_cases = (full_data.location_id == uk) & (full_data['Date'] >= spike_day)
-    full_data.loc[drop_cases, 'Confirmed'] = np.nan
-    manipulation_metadata['uk_neg_spike'] = {'cases_dropped': {'date': 'days after 2020-07-02', 'locations': [uk]}}
+    alabama = full_data['location_id'] == 523
+    spike_date = full_data['Date'] == pd.Timestamp('2020-07-11')
+    full_data.loc[alabama & spike_date, 'Hospitalizations'] = np.nan
+    manipulation_metadata['alabama'] = {'date': '2020-07-11', 'note': 'AL changed it data source from state surveillance to hosptials directly'}
     return full_data, manipulation_metadata
 
 
@@ -173,7 +152,7 @@ def check_counts(model_data: pd.DataFrame, rate_var: str, action: str, threshold
     df = model_data.copy()
     df['Count'] = df[rate_var] * df['population']
     df['Count'] = df['Count'].fillna(0)
-    sub_thresh = df.groupby('location_id')['Count'].transform(max) <= threshold
+    sub_thresh = df.groupby('location_id')['Count'].transform(max) < threshold
     logger.warning(f"Fewer than {threshold} {rate_var.lower().replace(' rate', 's')} for "
                    f"{';'.join(df.loc[sub_thresh, 'location_name'].unique())}\n")
     if action == 'fill_na':
@@ -191,25 +170,25 @@ def check_counts(model_data: pd.DataFrame, rate_var: str, action: str, threshold
 
 def filter_to_epi_threshold(hierarchy: pd.DataFrame,
                             model_data: pd.DataFrame,
-                            threshold: int = 3) -> Tuple[pd.DataFrame, List[int], List[int]]:
+                            death_threshold: int,
+                            epi_threshold: int) -> Tuple[pd.DataFrame, List[int], List[int], List[int]]:
     """Drop locations that don't have at least `n` deaths; do not use cases or hospitalizations if under `n`."""
     df = model_data.copy()
-    df = check_counts(df, 'Confirmed case rate', 'fill_na', threshold)
+    df = check_counts(df, 'Confirmed case rate', 'fill_na', epi_threshold)
     days_w_cases = df['Confirmed case rate'].notnull().groupby(df['location_id']).sum()
     no_cases_locs = days_w_cases[days_w_cases == 0].index.to_list()
 
-    df = check_counts(df, 'Hospitalization rate', 'fill_na', threshold)
+    df = check_counts(df, 'Hospitalization rate', 'fill_na', epi_threshold)
     days_w_hosp = df['Hospitalization rate'].notnull().groupby(df['location_id']).sum()
     no_hosp_locs = days_w_hosp[days_w_hosp == 0].index.to_list()
 
-    #df = check_counts(df, 'Death rate', 'drop', threshold)
-    #dropped_locations = set(hierarchy['location_id']).difference(df['location_id'])
-    dropped_locations = set()
+    df = check_counts(df, 'Death rate', 'drop', death_threshold)
+    dropped_locations = set(hierarchy['location_id']).difference(df['location_id'])
 
     if dropped_locations:
-        logger.warning(f"Dropped {sorted(list(dropped_locations))} from data due to lack of cases or deaths.")
+        logger.warning(f"Dropped {sorted(list(dropped_locations))} from data due to lack of deaths.")
 
-    return df, no_cases_locs, no_hosp_locs
+    return df, dropped_locations, no_cases_locs, no_hosp_locs
 
 
 def fill_dates(df: pd.DataFrame, interp_var: str = None) -> pd.DataFrame:
@@ -223,12 +202,12 @@ def fill_dates(df: pd.DataFrame, interp_var: str = None) -> pd.DataFrame:
     return df
 
 
-def apply_parents(failed_model_locations: List[int], hierarchy: pd.DataFrame,
+def apply_parents(parent_model_locations: List[int], hierarchy: pd.DataFrame,
                   smooth_draws: pd.DataFrame, model_data: pd.DataFrame,
                   pop_data: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    failed_hierarchy = hierarchy.loc[hierarchy['location_id'].isin(failed_model_locations)].reset_index(drop=True)
-    failed_hierarchy['parent_id'] = failed_hierarchy['path_to_top_parent'].apply(lambda x: int(x.split(',')[-2]))
-    swip_swap = list(zip(failed_hierarchy['location_id'], failed_hierarchy['parent_id']))
+    use_parent_hierarchy = hierarchy.loc[hierarchy['location_id'].isin(parent_model_locations)].reset_index(drop=True)
+    use_parent_hierarchy['parent_id'] = use_parent_hierarchy['path_to_top_parent'].apply(lambda x: int(x.split(',')[-2]))
+    swip_swap = list(zip(use_parent_hierarchy['location_id'], use_parent_hierarchy['parent_id']))
 
     filled_draws = []
     for child_id, parent_id in swip_swap:

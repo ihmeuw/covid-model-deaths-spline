@@ -8,12 +8,12 @@ import numpy as np
 
 
 def evil_doings(full_data: pd.DataFrame) -> Tuple[pd.DataFrame, Dict]:
-    # Record our sins
     manipulation_metadata = {}
-    alabama = full_data['location_id'] == 523
-    spike_date = full_data['Date'] == pd.Timestamp('2020-07-11')
-    full_data.loc[alabama & spike_date, 'Hospitalizations'] = np.nan
-    manipulation_metadata['alabama'] = {'date': '2020-07-11', 'note': 'AL changed it data source from state surveillance to hosptials directly'}
+    madagascar = full_data.location_id == 181
+    indiana = full_data.location_id == 537
+    full_data.loc[madagascar | indiana, 'Hospitalizations'] = np.nan
+    manipulation_metadata['madagascar'] = 'dropped hospitalizations'
+    manipulation_metadata['indiana'] = 'dropped hospitalizations'
     return full_data, manipulation_metadata
 
 

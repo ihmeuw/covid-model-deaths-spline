@@ -9,6 +9,9 @@ import numpy as np
 
 def evil_doings(full_data: pd.DataFrame) -> Tuple[pd.DataFrame, Dict]:
     manipulation_metadata = {}
+    arizona = full_data['location_id'] == 525
+    full_data.loc[arizona, 'Hospitalizations'] = np.nan
+    manipulation_metadata['arizona'] = 'dropped hospitalizations'
     return full_data, manipulation_metadata
 
 

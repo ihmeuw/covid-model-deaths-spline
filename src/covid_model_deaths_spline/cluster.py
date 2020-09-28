@@ -10,11 +10,11 @@ from covid_shared import shell_tools
 from loguru import logger
 
 
-PROJECT = 'proj_dq'
-QUEUE = 'd.q'
+PROJECT = 'proj_covid_prod'
+QUEUE = 'all.q'
 F_MEM = '5.0G'
-F_THREAD = '11'
-OMP_NUM_THREADS = '4'
+F_THREAD = '15'
+OMP_NUM_THREADS = '6'
 H_RUNTIME = '03:00:00'
 SLEEP_TIME = 10
 

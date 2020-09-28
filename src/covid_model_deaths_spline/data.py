@@ -8,12 +8,29 @@ import numpy as np
 
 
 def evil_doings(full_data: pd.DataFrame) -> Tuple[pd.DataFrame, Dict]:
-    # Record our sins
     manipulation_metadata = {}
-    alabama = full_data['location_id'] == 523
-    spike_date = full_data['Date'] == pd.Timestamp('2020-07-11')
-    full_data.loc[alabama & spike_date, 'Hospitalizations'] = np.nan
-    manipulation_metadata['alabama'] = {'date': '2020-07-11', 'note': 'AL changed it data source from state surveillance to hosptials directly'}
+    # Examples of data manipulations.
+#    arizona = full_data['location_id'] == 525
+#    full_data.loc[arizona, 'Hospitalizations'] = np.nan
+#    manipulation_metadata['arizona'] = 'dropped hospitalizations'
+    
+#    new_york = full_data['location_id'] == 555
+#    full_data.loc[new_york, 'Hospitalizations'] = np.nan
+#    manipulation_metadata['new_york'] = 'dropped hospitalizations'
+
+#    delaware = full_data['location_id'] == 530
+#    bad_date = full_data['Date'] == pd.Timestamp('2020-08-31')
+#    full_data.loc[delaware & bad_date, 'Confirmed'] = np.nan
+#    manipulation_metadata['delaware'] = 'dropped most recent date of cases'
+
+#    aragon  = full_data['location_id'] == 60358
+#    full_data.loc[aragon, 'Hospitalizations'] = np.nan
+#    manipulation_metadata['aragon'] = 'dropped hospitalizations'
+
+#    hubei = full_data['location_id'] == 503
+#    full_data.loc[hubei, 'Confirmed'] = np.nan
+#    manipulation_metadata['hubei'] = 'dropped cases'
+   
     return full_data, manipulation_metadata
 
 

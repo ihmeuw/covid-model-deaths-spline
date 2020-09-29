@@ -3,21 +3,19 @@ import pandas as pd
 from mrtool import MRData, LinearCovModel, MRBeRT, utils
 from typing import List, Dict, Tuple
 
-import dill as pickle
-
 
 class SplineFit:
     """Spline fit class
     """
-    def __init__(self, 
-                 data: pd.DataFrame, 
+    def __init__(self,
+                 data: pd.DataFrame,
                  dep_var: str,
                  spline_var: str,
-                 indep_vars: List[str], 
+                 indep_vars: List[str],
                  n_i_knots: int,
                  ensemble_knots: np.array = None,
                  spline_options: Dict = dict(),
-                 observed_var: str = None, 
+                 observed_var: str = None,
                  pseudo_se_multiplier: float = 1.,
                  se_default: float = 1.,
                  log: bool = True):
@@ -41,7 +39,7 @@ class SplineFit:
             col_study_id='study_id'
         )
         self.data = data
-        
+
         # cov models
         cov_models = []
         if 'intercept' in indep_vars:
@@ -59,14 +57,14 @@ class SplineFit:
         if any([i not in ['intercept'] for i in indep_vars]):  # , 'Model testing rate'
             bad_vars = [i for i in indep_vars if i not in ['intercept']]  # , 'Model testing rate'
             raise ValueError(f"Unsupported independent variable(s) entered: {'; '.join(bad_vars)}")
-            
+
         # get random knot placement
         if 'spline_knots' in list(spline_options.keys()):
             raise ValueError('Using random spline, do not manually specify knots.')
         if ensemble_knots is None:
-            ensemble_knots = self.get_ensemble_knots(n_i_knots, data[spline_var].values, 
+            ensemble_knots = self.get_ensemble_knots(n_i_knots, data[spline_var].values,
                                                      data[observed_var].values, spline_options)
-        
+
         # spline cov model
         spline_model = LinearCovModel(
             alt_cov=spline_var,
@@ -77,19 +75,19 @@ class SplineFit:
             spline_knots=ensemble_knots[0],
             name=spline_var
         )
-        
+
         # var names
         self.indep_vars = [i for i in indep_vars if i != 'intercept']
         self.spline_var = spline_var
-        
+
         # model
-        self.mr_model = MRBeRT(mr_data, 
-                               ensemble_cov_model=spline_model, 
+        self.mr_model = MRBeRT(mr_data,
+                               ensemble_cov_model=spline_model,
                                ensemble_knots=ensemble_knots,
                                cov_models=cov_models)
         self.submodel_fits = None
         self.coef_dicts = None
-        
+
     def find_pctile(self, data: np.array, terminal_days: int, spline_knots_type: str) -> Tuple[float, float]:
         data = np.sort(data)
         if spline_knots_type == 'domain':
@@ -98,29 +96,29 @@ class SplineFit:
         elif spline_knots_type == 'frequency':
             #start_boundary_pctile = terminal_days / data.size
             end_boundary_pctile = 1. - terminal_days / data.size
-        
+
         return end_boundary_pctile  # start_boundary_pctile,
-        
+
     def get_ensemble_knots(self, n_i_knots: int, spline_data: np.array, observed: np.array,
                            spline_options: Dict, terminal_days: int = 4) -> List[np.array]:
         # # number of submodels
         # N = n_i_knots * 4
         # N = max(28, N)
         N = 40
-        
+
         # where are our fixed outer points
         if observed.sum() < 100:
             #start_boundary_pctile = terminal_days / 100
             end_boundary_pctile = 1. - (terminal_days / 100)
             min_interval = terminal_days / 100
         else:
-            # start_boundary_pctile, 
+            # start_boundary_pctile,
             end_boundary_pctile = self.find_pctile(
                 spline_data[observed], terminal_days, spline_options['spline_knots_type']
             )
             min_interval = terminal_days / observed.sum()
         start_boundary_pctile = 0.
-            
+
         # sample, fixing first and last interior knots as specified
         n_intervals = n_i_knots + 1
         k_start = 0.
@@ -140,13 +138,13 @@ class SplineFit:
             ensemble_knots = np.insert(ensemble_knots, 1, start_boundary_pctile, 1)
         if k_end < 1.:
             ensemble_knots = np.insert(ensemble_knots, -1, end_boundary_pctile, 1)
-            
+
         # rescale to observed
         if not observed.all():
             if spline_options['spline_knots_type'] != 'domain':
                 raise ValueError('Expecting `spline_knots_type` domain for knot rescaling (stage 2 model).')
             ensemble_knots = rescale_k(spline_data[observed], spline_data, ensemble_knots)
-        
+
         # make sure we have unique knots
         if spline_options['spline_knots_type'] == 'frequency':
             _ensemble_knots = []
@@ -158,7 +156,7 @@ class SplineFit:
             # flag if no fully unique knot options (i.e., entries w/ duplicates eliminated in previous step)
             if ensemble_knots.size == 0:
                 raise ValueError('Knot options do not find unique data values (frequency).')
-        
+
         return ensemble_knots
 
     def fit_model(self):
@@ -179,18 +177,18 @@ class SplineFit:
         coef_dict.update({
             self.spline_var:spline_coefs
         })
-        
+
         return coef_dict
-    
+
     def predict(self, pred_data: pd.DataFrame):
         # get individual curves
         submodel_fits = [self.predict_submodel(sub_model, coef_dict, pred_data) for sub_model, coef_dict in
                          zip(self.mr_model.sub_models, self.coef_dicts)]
         submodel_fits = np.array(submodel_fits)
         weights = np.array([self.mr_model.weights]).T
-            
+
         return (submodel_fits * weights).sum(axis=0)
-        
+
     def predict_submodel(self, sub_model, coef_dict: dict, pred_data: pd.DataFrame):
         spline_model_idx = sub_model.linear_cov_model_names.index(self.spline_var)
         spline_model = sub_model.linear_cov_models[spline_model_idx]
@@ -203,10 +201,10 @@ class SplineFit:
             else:
                 mat = pred_data[[variable]].values
             preds += [mat.dot(coef)]
-        
+
         return np.sum(preds, axis=0)
 
-    
+
 def rescale_k(x_from: np.array, x_to: np.array, ensemble_knots: np.array) -> np.array:
     ensemble_knots = ensemble_knots.copy()
 

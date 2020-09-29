@@ -6,7 +6,6 @@ import dill as pickle
 from loguru import logger
 import pandas as pd
 import yaml
-from collections import namedtuple
 
 from covid_model_deaths_spline import data, models, pdf_merger, cluster, summarize, aggregate
 

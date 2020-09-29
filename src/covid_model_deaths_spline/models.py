@@ -6,7 +6,9 @@ from typing import List, Dict, Tuple
 import sys
 from collections import namedtuple
 
+from covid_shared.cli_tools.logging import configure_logging_to_terminal
 import dill as pickle
+from loguru import logger
 import numpy as np
 import pandas as pd
 import yaml
@@ -92,9 +94,10 @@ def plot_ensemble(location_id: int, smooth_draws: pd.DataFrame, df: pd.DataFrame
 def run_models(location_id: int, data_path: str, settings_path: str,
                dow_holdouts: int, plot_dir: str, n_draws: int):
     # set seed
+    logger.info(f'Starting model for location id {location_id}')
     np.random.seed(location_id)
 
-    # load inputs
+    logger.info('Loading model inputs.')
     with Path(data_path).open('rb') as in_file:
         model_data = pickle.load(in_file)
     model_data = model_data.loc[model_data['location_id'] == location_id].reset_index(drop=True)
@@ -107,9 +110,13 @@ def run_models(location_id: int, data_path: str, settings_path: str,
     iteration_n_draws = [int(n_draws / dow_holdouts)] * dow_holdouts
     iteration_n_draws[0] += n_draws - np.sum(iteration_n_draws)
     dow_holdouts = np.arange(dow_holdouts)
-    results = [model_iteration(location_id, model_data, model_settings, h, d) for h, d in zip(dow_holdouts, iteration_n_draws)]
+    results = []
+    for h, d in zip(dow_holdouts, iteration_n_draws):
+        if d % 10 == 0:
+            logger.info(f'Running model iteration for holdout {h}, draw {d}')
+        results.append(model_iteration(location_id, model_data, model_settings, h, d))
 
-    # process results
+    logger.info('Processing results.')
     model_labels = []
     noisy_draws = []
     smooth_draws = []
@@ -130,10 +137,13 @@ def run_models(location_id: int, data_path: str, settings_path: str,
         sd = sd.rename(index=str, columns=dict(zip(cols, new_cols)))
         smooth_draws.append(sd)
     model_data = results[0].model_data
+    logger.info('Merging noisy draws.')
     noisy_draws = functools.reduce(lambda x, y: pd.merge(x, y, how='outer'), noisy_draws)
+    logger.info('Merging smooth draws')
     smooth_draws = functools.reduce(lambda x, y: pd.merge(x, y, how='outer'), smooth_draws)
 
     # plot
+    logger.info('Producing plots.')
     draw_ranges = np.cumsum(iteration_n_draws)
     draw_ranges = np.append([0], draw_ranges)
     draw_ranges = list(zip(draw_ranges[:-1], draw_ranges[1:]))
@@ -150,14 +160,18 @@ def run_models(location_id: int, data_path: str, settings_path: str,
     del smooth_draws['population']
 
     # save
+    logger.info('Saving results.')
     result = RESULTS(model_data, noisy_draws, smooth_draws)
     output_dir = Path(model_settings['results_dir'])
     with (output_dir / f'{location_id}.pkl').open('wb') as outfile:
         pickle.dump(result, outfile, -1)
 
+    logger.info('**Done**')
+
 
 if __name__ == '__main__':
     os.environ['OMP_NUM_THREADS'] = sys.argv[7]
+    configure_logging_to_terminal(verbose=2)  # Make the logs noisy.
 
     run_models(location_id=int(sys.argv[1]),
                data_path=sys.argv[2],

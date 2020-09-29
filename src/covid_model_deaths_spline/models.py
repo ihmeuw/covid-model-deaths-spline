@@ -112,8 +112,7 @@ def run_models(location_id: int, data_path: str, settings_path: str,
     dow_holdouts = np.arange(dow_holdouts)
     results = []
     for h, d in zip(dow_holdouts, iteration_n_draws):
-        if d % 10 == 0:
-            logger.info(f'Running model iteration for holdout {h}, draw {d}')
+        logger.info(f'Running model iteration for holdout {h}, draw {d}')
         results.append(model_iteration(location_id, model_data, model_settings, h, d))
 
     logger.info('Processing results.')

@@ -1,7 +1,9 @@
+from typing import List, Dict, Tuple
+
+from loguru import logger
+from mrtool import MRData, LinearCovModel, MRBeRT, utils
 import numpy as np
 import pandas as pd
-from mrtool import MRData, LinearCovModel, MRBeRT, utils
-from typing import List, Dict, Tuple
 
 
 class SplineFit:
@@ -20,6 +22,7 @@ class SplineFit:
                  se_default: float = 1.,
                  log: bool = True):
         # set up model data
+        logger.debug('Setting up model data.')
         data = data.copy()
         if observed_var:
             if not data[observed_var].dtype == 'bool':
@@ -31,6 +34,7 @@ class SplineFit:
 
         # create mrbrt object
         data['study_id'] = 1
+        logger.debug('Building MRData.')
         mr_data = MRData(
             df=data,
             col_obs=dep_var,
@@ -41,6 +45,7 @@ class SplineFit:
         self.data = data
 
         # cov models
+        logger.debug('Making covariate models.')
         cov_models = []
         if 'intercept' in indep_vars:
             if log:
@@ -59,6 +64,7 @@ class SplineFit:
             raise ValueError(f"Unsupported independent variable(s) entered: {'; '.join(bad_vars)}")
 
         # get random knot placement
+        logger.debug('Getting random knot placement.')
         if 'spline_knots' in list(spline_options.keys()):
             raise ValueError('Using random spline, do not manually specify knots.')
         if ensemble_knots is None:
@@ -66,6 +72,7 @@ class SplineFit:
                                                      data[observed_var].values, spline_options)
 
         # spline cov model
+        logger.debug('Setting up spline covariate model.')
         spline_model = LinearCovModel(
             alt_cov=spline_var,
             use_re=False,
@@ -81,6 +88,7 @@ class SplineFit:
         self.spline_var = spline_var
 
         # model
+        logger.debug('Building MRBeRT model.')
         self.mr_model = MRBeRT(mr_data,
                                ensemble_cov_model=spline_model,
                                ensemble_knots=ensemble_knots,

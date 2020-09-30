@@ -33,7 +33,7 @@ def drop_days_by_indicator(data: np.array, deaths_data: np.array, dow_holdout: i
 def model_iteration(location_id: int, model_data: pd.DataFrame, model_settings: Dict,
                     dow_holdout: int, n_draws: int):
     # drop days
-    print(dow_holdout)
+    logger.info('Dropping days from data.')
     model_data = model_data.copy()
     deaths_indicator = 'Death rate'
     indicators = ['Confirmed case rate', 'Hospitalization rate']
@@ -45,18 +45,22 @@ def model_iteration(location_id: int, model_data: pd.DataFrame, model_settings: 
     model_data = model_data.loc[~model_data[indicators + [deaths_indicator]].isnull().all(axis=1)].reset_index(drop=True)
 
     # first stage model(s)
+    logger.info('Running first stage models.')
     model_data_list = [model_data.loc[:,['location_id', 'location_name', 'Date',
                                          'Death rate', 'population']]]
     if location_id not in model_settings['no_cases_locs']:
+        logger.info('Launching CFR model.')
         cfr_model_data = cfr_model.cfr_model(model_data, dow_holdout=dow_holdout, **model_settings['CFR'])
         model_data_list += [cfr_model_data.loc[:, ['location_id', 'Date',
                                                    'Confirmed case rate', 'Predicted death rate (CFR)']]]
     if location_id not in model_settings['no_hosp_locs']:
+        logger.info('Launching HFR model.')
         hfr_model_data = cfr_model.cfr_model(model_data, dow_holdout=dow_holdout, **model_settings['HFR'])
         model_data_list += [hfr_model_data.loc[:, ['location_id', 'Date',
                                                    'Hospitalization rate', 'Predicted death rate (HFR)']]]
 
     # combine outputs
+    logger.info('Combining data sets.')
     model_data = functools.reduce(
         lambda x, y: pd.merge(x, y, how='outer'),
         model_data_list
@@ -70,10 +74,12 @@ def model_iteration(location_id: int, model_data: pd.DataFrame, model_settings: 
     model_data = model_data.loc[:, keep_cols]
 
     # second stage model
+    logger.info('Launching synthesis model.')
     noisy_draws, smooth_draws = smoother.synthesize_time_series(model_data, dow_holdout=dow_holdout,
                                                                 n_draws=n_draws, **model_settings['smoother'])
     model_data['dow_holdout'] = dow_holdout
 
+    logger.info('Model iteration complete.')
     return RESULTS(model_data, noisy_draws, smooth_draws)
 
 

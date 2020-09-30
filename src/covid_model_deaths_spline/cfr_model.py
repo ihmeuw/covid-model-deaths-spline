@@ -114,7 +114,7 @@ def cfr_model(df: pd.DataFrame,
 
     # only keep from last day of 2 cases ("imported case" threshold; prevents some duplicate values in spline)
     last_day_of_two_cases = (df[spline_var][::-1] <= 2 / df['population'][0]).cumsum()[::-1] <= 1
-    last_day_of_zero_deaths = (df[spline_var][::-1] == 0 / df['population'][0]).cumsum()[::-1] <= 1
+    last_day_of_zero_deaths = (df[dep_var][::-1] == 0 / df['population'][0]).cumsum()[::-1] <= 1
     df = df.loc[last_day_of_two_cases & last_day_of_zero_deaths].reset_index(drop=True)
 
     # don't predict deaths before deaths data

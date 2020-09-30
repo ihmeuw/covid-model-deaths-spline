@@ -1,9 +1,12 @@
+from collections import namedtuple
 import functools
 import multiprocessing
+import sys
 from typing import List, Dict, Tuple
-from collections import namedtuple
-import dill as pickle
 
+
+import dill as pickle
+from loguru import logger
 import numpy as np
 import pandas as pd
 import tqdm
@@ -172,6 +175,7 @@ def get_gprior_std(df: pd.DataFrame, last_interval_days: int = 7,
 
 def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
              n_draws: int, dow_holdout: int) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    logger.debug('Extracting inputs for smoother model.')
     # extract inputs
     df = df.sort_values('Date').reset_index(drop=True)
     total_deaths = (df['Death rate'] * df['population']).max()
@@ -190,6 +194,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     # number of knots
     n_model_days = len(df.loc[df[obs_var].notnull()])
     n_i_knots = max(int(n_model_days / KNOT_DAYS) - 1, 3)
+    logger.debug(f'Using {n_model_days} days of data and {n_i_knots} knots to start.')
 
     # get deaths in last week to determine flat prior for daily
     gprior_std = get_gprior_std(df)
@@ -198,6 +203,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     pred_df = pd.DataFrame({'intercept':1, 'x': x})
 
     # prepare daily data
+    logger.debug('Preparing daily data.')
     ln_daily_limits = get_limits(ln_daily_y)
     ln_daily_mod_df, ln_daily_spline_options = process_inputs(
         y=ln_daily_y, col_names=[obs_var] + pred_vars,
@@ -207,12 +213,14 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     ln_daily_mod_df['obs_se'] = get_data_se(ln_daily_mod_df['y'].values)
 
     # prepare cumulative data and run model
+    logger.debug('Preparing cumulative data.')
     cumul_mod_df, cumul_spline_options = process_inputs(
         y=cumul_y, col_names=[obs_var] + pred_vars,
         x=x, n_i_knots=n_i_knots,
         mono=True, limits=np.array([0., np.inf]), tail_gprior=np.array([0, gprior_std])
     )
     cumul_mod_df['obs_se'] = np.sqrt(cumul_mod_df.loc[cumul_mod_df['observed'], 'y'].max())
+    logger.debug('Launching smoothing model.')
     cumul_smooth_y, cumul_model, cumul_mod_df = run_smoothing_model(
         cumul_mod_df, n_i_knots, cumul_spline_options, pred_df,
         ensemble_knots=None, results_only=False, log=False
@@ -220,12 +228,14 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     ensemble_knots = cumul_model.ensemble_knots
 
     # set floor and convert to log daily
+    logger.debug('Setting floor and converting to log daily for results.')
     daily_smooth_y = cumul_smooth_y.copy()
     daily_smooth_y[daily_smooth_y < floor] = floor
     daily_smooth_y = np.diff(daily_smooth_y, axis=0, prepend=0)
     ln_daily_smooth_y = np.log(apply_floor(daily_smooth_y.copy(), floor))
 
     # same for dataset prediction
+    logger.debug('Setting floor and converting to log daily for in sample.')
     smooth_y_insample = pd.pivot_table(cumul_mod_df,
                                        index='x', columns='data_type', values='smooth_y').values
     smooth_y_insample[smooth_y_insample < floor] = floor
@@ -239,12 +249,14 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     ln_daily_mod_df['smooth_y_insample'] = smooth_y_insample[~np.isnan(smooth_y_insample)]
 
     # sample residual noise in ln(daily), convert back to linear cumul
+    logger.debug('Sampling residual noise.')
     mad = get_mad(ln_daily_mod_df, weighted=True)
     rstd = mad * 1.4826
     ln_daily_smooth_y = np.array([ln_daily_smooth_y]).T
     noisy_draws = np.random.normal(ln_daily_smooth_y, rstd, (ln_daily_smooth_y.size, n_draws))
 
     # refit data
+    logger.debug('Prepping refit data and settings.')
     draw_mod_dfs = [
         pd.DataFrame({
             'y':nd,
@@ -264,6 +276,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     refit_spline_options = ln_daily_spline_options.copy()
 
     # run refit
+    logger.debug('Running refit.')
     _combiner = functools.partial(run_smoothing_model,
                                   n_i_knots=n_i_knots,
                                   spline_options=refit_spline_options,
@@ -272,16 +285,18 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
                                   results_only=True,
                                   log=True)
     with multiprocessing.Pool(int(F_THREAD)) as p:
-        smooth_draws = list(tqdm.tqdm(p.imap(_combiner, draw_mod_dfs), total=n_draws))
+        smooth_draws = list(tqdm.tqdm(p.imap(_combiner, draw_mod_dfs), total=n_draws, file=sys.stdout))
     smooth_draws = np.vstack(smooth_draws).T
 
     # make pretty (in linear cumulative space)
+    logger.debug('Cleaning up draws.')
     noisy_draws = draw_cleanup(noisy_draws,
                                x_pred, df)
     smooth_draws = draw_cleanup(smooth_draws,
                                 x_pred, df)
 
     # get best knots and betas
+    logger.debug('Locating best settings.')
     best_settings = find_best_settings(cumul_model, ln_daily_spline_options)
 
     return noisy_draws, smooth_draws, best_settings

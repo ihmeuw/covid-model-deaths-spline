@@ -299,6 +299,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     logger.debug('Locating best settings.')
     best_settings = find_best_settings(cumul_model, ln_daily_spline_options)
 
+    logger.debug('**Done**')
     return noisy_draws, smooth_draws, best_settings
 
 

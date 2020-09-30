@@ -140,7 +140,8 @@ class SplineFit:
                 k_end = end_boundary_pctile - min_interval
                 
         # sample - force first 50% of knots to be in placed first 50% of domain; same of second (for speed)
-        b = np.array([[k_start, k_end / 2]] * (n_i_knots - int(n_i_knots / 2)) + [[k_end / 2, k_end]] * int(n_i_knots / 2))
+        b = np.array([[k_start, k_end / 2]] * ((n_intervals - 1) - int((n_intervals - 1) / 2)) + \
+                     [[k_end / 2, k_end]] * int((n_intervals - 1) / 2))
         d = np.array([[min_interval, 1]] * n_intervals)
         ensemble_knots = utils.sample_knots(n_intervals, b=b, d=d, N=N)
         if k_start > 0.:

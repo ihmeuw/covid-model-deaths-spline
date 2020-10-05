@@ -1,6 +1,7 @@
 from typing import List
 
 import dill as pickle
+from loguru import logger
 import numpy as np
 import pandas as pd
 
@@ -55,8 +56,8 @@ def run_model(mod_df: pd.DataFrame, df: pd.DataFrame, spline_knots_type: str,
             else:
                 raise ValueError('Prediction all nans (non-convergence).')
         except Exception as e:
-            print(f'{model_type} model failed with {n_i_knots} knots.')
-            print(f'Error: {e}')
+            logger.warning(f'{model_type} model failed with {n_i_knots} knots.')
+            logger.warning(f'Error: {e}')
         if n_i_knots == 2:
             prediction_pending = False
         if prediction_pending:

@@ -25,7 +25,8 @@ def apply_floor(vals: np.array, floor_val: float) -> np.array:
 def run_smoothing_model(mod_df: pd.DataFrame, n_i_knots: int, spline_options: Dict,
                         pred_df: pd.DataFrame, ensemble_knots: np.array,
                         results_only: bool, log: bool, verbose: bool) -> np.array:
-    logger.debug('Building spline fit model.')
+    if verbose:
+        logger.debug('Building spline fit model.')
     mr_model = SplineFit(
         data=mod_df,
         dep_var='y',
@@ -39,9 +40,11 @@ def run_smoothing_model(mod_df: pd.DataFrame, n_i_knots: int, spline_options: Di
         log=log,
         verbose=verbose
     )
-    logger.debug('Fitting model.')
+    if verbose:
+        logger.debug('Fitting model.')
     mr_model.fit_model()
-    logger.debug('Making model predictions.')
+    if verbose:
+        logger.debug('Making model predictions.')
     smooth_y = mr_model.predict(pred_df)
     mod_df = mr_model.data
     mod_df['smooth_y'] = mr_model.predict(mod_df)

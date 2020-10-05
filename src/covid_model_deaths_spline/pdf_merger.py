@@ -1,5 +1,4 @@
 import os
-import numpy as np
 
 from PyPDF2 import PdfFileMerger
 

@@ -1,10 +1,12 @@
+from collections import namedtuple
 import functools
 import multiprocessing
-from pathlib import Path
+import sys
 from typing import List, Dict, Tuple
-from collections import namedtuple
-import dill as pickle
 
+
+import dill as pickle
+from loguru import logger
 import numpy as np
 import pandas as pd
 import tqdm
@@ -21,8 +23,10 @@ def apply_floor(vals: np.array, floor_val: float) -> np.array:
 
 
 def run_smoothing_model(mod_df: pd.DataFrame, n_i_knots: int, spline_options: Dict,
-                        pred_df: pd.DataFrame, ensemble_knots: np.array, 
-                        results_only: bool, log: bool) -> np.array:
+                        pred_df: pd.DataFrame, ensemble_knots: np.array,
+                        results_only: bool, log: bool, verbose: bool) -> np.array:
+    if verbose:
+        logger.debug('Building spline fit model.')
     mr_model = SplineFit(
         data=mod_df,
         dep_var='y',
@@ -33,9 +37,14 @@ def run_smoothing_model(mod_df: pd.DataFrame, n_i_knots: int, spline_options: Di
         ensemble_knots=ensemble_knots,
         observed_var='observed',
         pseudo_se_multiplier=2.,
-        log=log
+        log=log,
+        verbose=verbose
     )
+    if verbose:
+        logger.debug('Fitting model.')
     mr_model.fit_model()
+    if verbose:
+        logger.debug('Making model predictions.')
     smooth_y = mr_model.predict(pred_df)
     mod_df = mr_model.data
     mod_df['smooth_y'] = mr_model.predict(mod_df)
@@ -46,7 +55,7 @@ def run_smoothing_model(mod_df: pd.DataFrame, n_i_knots: int, spline_options: Di
         return smooth_y, mr_model.mr_model, mod_df
 
 
-def process_inputs(y: np.array, col_names: List[str], 
+def process_inputs(y: np.array, col_names: List[str],
                    x: np.array, n_i_knots: int,  #observed_days: np.array,
                    mono: bool, limits: np.array, tail_gprior: np.array):
     # get smoothed curve (dropping NAs, inflating variance for pseudo-deaths)
@@ -79,7 +88,7 @@ def process_inputs(y: np.array, col_names: List[str],
             'spline_r_linear': True,
             'spline_l_linear': False
         }
-    
+
     # cumulative or daily
     if mono:
         # settings for cumulative
@@ -89,7 +98,7 @@ def process_inputs(y: np.array, col_names: List[str],
         beta_prior = np.array([limits] * (n_i_knots + 2))
         beta_prior[0] = np.array([0, np.inf])
         spline_options.update({'prior_beta_uniform': beta_prior.T})
-        
+
         # stronger control for l-tail, dampen interior wiggliness
         if tail_gprior.shape != (2,):
             raise ValueError('`tail_gprior` must be in the format np.array([mu, sigma])')
@@ -124,7 +133,7 @@ def get_limits(y: np.array) -> np.array:
     y = y[~np.isnan(y)]
     upper_lim = np.abs(y).max()
     lower_lim = -upper_lim
-    
+
     return np.array([lower_lim, upper_lim])
 
 
@@ -140,7 +149,7 @@ def get_mad(df: pd.DataFrame, weighted: bool) -> float:
         mad = abs_residuals[w_cumul >= 0.5][0]
     else:
         mad = np.median(abs_residuals)
-    
+
     return mad
 
 
@@ -151,9 +160,9 @@ def find_best_settings(mr_model, spline_options):
     best_knots = np.average(knots, axis=0, weights=mr_model.weights)
     best_betas = np.average(betas, axis=0, weights=mr_model.weights)
     best_betas[1:] += best_betas[0]
-    
+
     Results = namedtuple('Results', 'knots betas options')
-    
+
     return Results(best_knots, best_betas, spline_options)
 
 
@@ -167,12 +176,13 @@ def get_gprior_std(df: pd.DataFrame, last_interval_days: int = 7,
         gprior_std = 1e-4
     else:
         gprior_std = np.inf
-        
+
     return gprior_std
 
 
 def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
              n_draws: int, dow_holdout: int) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    logger.debug('Extracting inputs for smoother model.')
     # extract inputs
     df = df.sort_values('Date').reset_index(drop=True)
     total_deaths = (df['Death rate'] * df['population']).max()
@@ -187,18 +197,20 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     daily_y[daily_y_isna] = np.nan
     ln_daily_y = np.log(apply_floor(daily_y.copy(), floor))
     x = df.index[keep_idx].values
-    
+
     # number of knots
     n_model_days = len(df.loc[df[obs_var].notnull()])
     n_i_knots = max(int(n_model_days / KNOT_DAYS) - 1, 3)
+    logger.debug(f'Using {n_model_days} days of data and {n_i_knots} knots to start.')
 
     # get deaths in last week to determine flat prior for daily
     gprior_std = get_gprior_std(df)
 
     # prediction
     pred_df = pd.DataFrame({'intercept':1, 'x': x})
-    
+
     # prepare daily data
+    logger.debug('Preparing daily data.')
     ln_daily_limits = get_limits(ln_daily_y)
     ln_daily_mod_df, ln_daily_spline_options = process_inputs(
         y=ln_daily_y, col_names=[obs_var] + pred_vars,
@@ -206,28 +218,32 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
         mono=False, limits=ln_daily_limits, tail_gprior=np.array([0, gprior_std])
     )
     ln_daily_mod_df['obs_se'] = get_data_se(ln_daily_mod_df['y'].values)
-    
+
     # prepare cumulative data and run model
+    logger.debug('Preparing cumulative data.')
     cumul_mod_df, cumul_spline_options = process_inputs(
         y=cumul_y, col_names=[obs_var] + pred_vars,
         x=x, n_i_knots=n_i_knots,
         mono=True, limits=np.array([0., np.inf]), tail_gprior=np.array([0, gprior_std])
     )
     cumul_mod_df['obs_se'] = np.sqrt(cumul_mod_df.loc[cumul_mod_df['observed'], 'y'].max())
+    logger.debug('Launching smoothing model.')
     cumul_smooth_y, cumul_model, cumul_mod_df = run_smoothing_model(
         cumul_mod_df, n_i_knots, cumul_spline_options, pred_df,
-        ensemble_knots=None, results_only=False, log=False
+        ensemble_knots=None, results_only=False, log=False, verbose=True
     )
     ensemble_knots = cumul_model.ensemble_knots
-    
+
     # set floor and convert to log daily
+    logger.debug('Setting floor and converting to log daily for results.')
     daily_smooth_y = cumul_smooth_y.copy()
     daily_smooth_y[daily_smooth_y < floor] = floor
     daily_smooth_y = np.diff(daily_smooth_y, axis=0, prepend=0)
     ln_daily_smooth_y = np.log(apply_floor(daily_smooth_y.copy(), floor))
-    
+
     # same for dataset prediction
-    smooth_y_insample = pd.pivot_table(cumul_mod_df, 
+    logger.debug('Setting floor and converting to log daily for in sample.')
+    smooth_y_insample = pd.pivot_table(cumul_mod_df,
                                        index='x', columns='data_type', values='smooth_y').values
     smooth_y_insample[smooth_y_insample < floor] = floor
     smooth_y_insample_isna = np.isnan(smooth_y_insample)
@@ -240,12 +256,14 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     ln_daily_mod_df['smooth_y_insample'] = smooth_y_insample[~np.isnan(smooth_y_insample)]
 
     # sample residual noise in ln(daily), convert back to linear cumul
+    logger.debug('Sampling residual noise.')
     mad = get_mad(ln_daily_mod_df, weighted=True)
     rstd = mad * 1.4826
     ln_daily_smooth_y = np.array([ln_daily_smooth_y]).T
     noisy_draws = np.random.normal(ln_daily_smooth_y, rstd, (ln_daily_smooth_y.size, n_draws))
 
     # refit data
+    logger.debug('Prepping refit data and settings.')
     draw_mod_dfs = [
         pd.DataFrame({
             'y':nd,
@@ -259,32 +277,37 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     x_pred = x.max() + np.arange(dow_holdout + 1)[1:]
     x_pred = np.hstack([x, x_pred])
     refit_pred_df = pd.DataFrame({'intercept':1, 'x': x_pred})
-    
+
     # refit settings
     rescaled_ensemble_knots = rescale_k(cumul_mod_df['x'].values, x, ensemble_knots)
     refit_spline_options = ln_daily_spline_options.copy()
-    
+
     # run refit
+    logger.debug('Running refit.')
     _combiner = functools.partial(run_smoothing_model,
                                   n_i_knots=n_i_knots,
                                   spline_options=refit_spline_options,
                                   pred_df=refit_pred_df,
                                   ensemble_knots=rescaled_ensemble_knots,
                                   results_only=True,
-                                  log=True)
-    with multiprocessing.Pool(int(F_THREAD)) as p:
-        smooth_draws = list(tqdm.tqdm(p.imap(_combiner, draw_mod_dfs), total=n_draws))
+                                  log=True,
+                                  verbose=False)
+    with multiprocessing.Pool(int(F_THREAD) - 1) as p:
+        smooth_draws = list(tqdm.tqdm(p.imap(_combiner, draw_mod_dfs), total=n_draws, file=sys.stdout))
     smooth_draws = np.vstack(smooth_draws).T
 
     # make pretty (in linear cumulative space)
+    logger.debug('Cleaning up draws.')
     noisy_draws = draw_cleanup(noisy_draws,
                                x_pred, df)
     smooth_draws = draw_cleanup(smooth_draws,
                                 x_pred, df)
-    
+
     # get best knots and betas
+    logger.debug('Locating best settings.')
     best_settings = find_best_settings(cumul_model, ln_daily_spline_options)
 
+    logger.debug('**Done**')
     return noisy_draws, smooth_draws, best_settings
 
 
@@ -304,7 +327,7 @@ def synthesize_time_series(df: pd.DataFrame,
         n_draws=n_draws,
         dow_holdout=dow_holdout
     )
-    
+
     # save knots
     with open(f"{spline_settings_dir}/{df['location_id'][0]}_{dow_holdout}.pkl", 'wb') as fwrite:
         pickle.dump(best_settings, fwrite, -1)

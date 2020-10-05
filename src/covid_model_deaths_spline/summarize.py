@@ -4,7 +4,6 @@ from typing import List
 import numpy as np
 import pandas as pd
 
-from covid_model_deaths_spline import smoother
 from covid_model_deaths_spline.plotter import plotter
 
 
@@ -41,18 +40,18 @@ def append_summary_statistics(draw_df: pd.DataFrame, df: pd.DataFrame) -> pd.Dat
     df['Date'] = pd.to_datetime(df['Date'])
     df = df.merge(summ_df, how='outer')
     df = df.sort_values(['location_id', 'Date'])
-    
+
     # deal with locations without observed data
     if df['population'].isnull().any():
         df['population'] = df.groupby('location_id')['population'].transform(max)
     df['location_name'] = df.groupby('location_id')['location_name'].transform(lambda x: x.fillna(method='bfill'))
     df = df.loc[~np.isnat(df['Date'])]
-    
+
     return df.reset_index(drop=True)
 
 
-def summarize_and_plot(agg_df: pd.DataFrame, model_data: pd.DataFrame,  
-                       plot_dir: str, obs_var: str, spline_vars: List[str], 
+def summarize_and_plot(agg_df: pd.DataFrame, model_data: pd.DataFrame,
+                       plot_dir: str, obs_var: str, spline_vars: List[str],
                        pop_data: pd.DataFrame = None) -> pd.DataFrame:
     # draws are in count space and we need to get back to rate space before
     # plotting
@@ -75,7 +74,7 @@ def summarize_and_plot(agg_df: pd.DataFrame, model_data: pd.DataFrame,
         p_agg_df = agg_df.loc[agg_df['location_id'] == location_id].reset_index(drop=True)
         plotter(
             p_summ_df,
-            list(compress([obs_var] + spline_vars, 
+            list(compress([obs_var] + spline_vars,
                           (~p_summ_df[[obs_var] + spline_vars].isnull().all(axis=0)).to_list())),
             p_agg_df,
             ['Indirect'], [(0, len(draw_cols))],

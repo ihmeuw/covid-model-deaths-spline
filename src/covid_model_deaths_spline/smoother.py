@@ -288,7 +288,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
                                   results_only=True,
                                   log=True)
     with multiprocessing.Pool(int(F_THREAD)) as p:
-        smooth_draws = list(tqdm.tqdm(p.imap(_combiner, draw_mod_dfs), total=n_draws, file=sys.stdout))
+        smooth_draws = list(tqdm.tqdm(p.imap(_combiner, draw_mod_dfs), total=n_draws))  # , file=sys.stdout
     smooth_draws = np.vstack(smooth_draws).T
 
     # make pretty (in linear cumulative space)

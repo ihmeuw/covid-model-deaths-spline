@@ -30,6 +30,10 @@ def evil_doings(full_data: pd.DataFrame) -> Tuple[pd.DataFrame, Dict]:
 #    hubei = full_data['location_id'] == 503
 #    full_data.loc[hubei, 'Confirmed'] = np.nan
 #    manipulation_metadata['hubei'] = 'dropped cases'
+
+    vietnam = full_data['location_id'] == 20
+    full_data.loc[vietnam, 'Hospitalizations'] = np.nan
+    manipulation_metadata['vietnam'] = 'dropped hospitalizations'
    
     return full_data, manipulation_metadata
 

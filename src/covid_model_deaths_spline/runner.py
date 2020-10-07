@@ -136,6 +136,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     val_max = smooth_draws.groupby('location_id')['date'].max()
     date_diffs = (nan_min - val_max).apply(lambda x: x.days)
     date_diffs = date_diffs.loc[date_diffs.notnull()]
+    app_metadata.update({'nan_locations': date_diffs.index.to_list()})
     if (date_diffs < 0).any():
         date_diffs.to_csv(output_root / 'problem_location_report.csv', index=False)
         raise ValueError('Dropping NaNs in middle of time series (see problem_location_report.csv)')

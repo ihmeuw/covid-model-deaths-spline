@@ -127,6 +127,18 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     model_data = post_model_data.append(model_data.loc[model_data['location_id'].isin(PARENT_MODEL_LOCATIONS)])
     obs_var = smoother_settings['obs_var']
     spline_vars = smoother_settings['spline_vars']
+    
+    logger.debug("Capturing location-dates with NaNs and dropping them.")
+    nan_rows = smooth_draws.isnull().any(axis=1)
+    smooth_draws_nans = smooth_draws.loc[nan_rows].reset_index(drop=True)
+    smooth_draws = smooth_draws.loc[~nan_rows].reset_index(drop=True)
+    nan_min = smooth_draws_nans.groupby('location_id')['date'].min()
+    val_max = smooth_draws.groupby('location_id')['date'].max()
+    date_diffs = (nan_min - val_max).apply(lambda x: x.days)
+    date_diffs = date_diffs.loc[date_diffs.notnull()]
+    if (date_diffs < 0).any():
+        date_diffs.to_csv(output_root / 'problem_location_report.csv', index=False)
+        raise ValueError('Dropping NaNs in middle of time series (see problem_location_report.csv)')
 
     logger.debug("Fill specified model locations with parent and plot them.")
     smooth_draws, model_data = data.apply_parents(PARENT_MODEL_LOCATIONS, hierarchy, smooth_draws,
@@ -164,3 +176,4 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     model_data.rename(columns={'date': 'Date'}).reset_index().to_csv(output_root / 'model_data.csv', index=False)
     noisy_draws.reset_index().to_csv(output_root / 'model_results.csv', index=False)
     smooth_draws.reset_index().to_csv(output_root / 'model_results_refit.csv', index=False)
+    smooth_draws_nans.to_csv(output_root / 'model_results_refit_nans.csv', index=False)

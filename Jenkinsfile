@@ -90,7 +90,7 @@ pipeline {
             script{
                 ssh_cmd = "$WORKSPACE/$BUILD_NUMBER/spline/jenkins_run.sh"
                 sshagent(['svccovidci-privatekey']) {
-                            sh "ssh -o StrictHostKeyChecking=no svccovidci@modeldev-uge-archive-p010.cluster.ihme.washington.edu \"$ssh_cmd\""
+                            sh "ssh -o StrictHostKeyChecking=no svccovidci@int-uge-archive-p012.cluster.ihme.washington.edu \"$ssh_cmd\""
                          }
                  }
           }

@@ -246,3 +246,14 @@ def apply_parents(parent_model_locations: List[int], hierarchy: pd.DataFrame,
         smooth_draws = smooth_draws.append(filled_draws)
 
     return smooth_draws, model_data
+
+
+def load_ifr(ifr_root: Path):
+    ifr_path = ifr_root / 'allage_ifr_by_loctime.csv'
+    data = pd.read_csv(ifr_path)
+    data['Date'] = pd.to_datetime(data['datevar'])
+    data = data.rename(columns={'allage_ifr':'ifr'})
+    
+    keep_columns = ['location_id', 'Date', 'ifr']
+    
+    return data.loc[:, keep_columns]

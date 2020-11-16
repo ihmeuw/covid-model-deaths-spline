@@ -223,3 +223,100 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame,
         plt.close(fig)
     else:
         plt.show()
+
+        
+def infection_plots(infections: pd.DataFrame, model_data: pd.DataFrame, 
+                    ratios: pd.DataFrame, draw_cols: List[str], plot_file: str = None):
+    population = model_data['population'][0]
+    location_name = model_data['location_name'][0]
+    location_id = model_data['location_id'][0]
+    cumulative_infections = (infections
+                             .rename({'Date':'date'})
+                             .set_index('date')
+                             .sort_index()
+                             .loc[:, draw_cols]
+                             .mean(axis=1)
+                             .rename('daily_infections')
+                             .dropna())
+    daily_infections = (infections
+                        .rename({'Date':'date'})
+                        .set_index('date')
+                        .sort_index()
+                        .loc[:, draw_cols]
+                        .mean(axis=1)
+                        .rename('daily_infections')
+                        .diff()
+                        .dropna())
+    cumulative_infections *= population
+    daily_infections *= population
+
+    cumulative_cases = (model_data
+                        .rename(columns={'Date':'date'})
+                        .set_index('date')
+                        .sort_index()
+                        .loc[:, 'Confirmed case rate']
+                        .rename('cases')
+                        .dropna())
+    daily_cases = (model_data
+                   .rename(columns={'Date':'date'})
+                   .set_index('date')
+                   .sort_index()
+                   .loc[:, 'Confirmed case rate']
+                   .rename('cases')
+                   .diff()
+                   .dropna())
+    cumulative_cases *= population
+    daily_cases *= population
+
+    ifr = (ratios
+           .loc[ratios['adj_ifr'].notnull()]
+           .set_index(['date'])
+           .sort_index()
+           .loc[:, 'ifr'])
+    adj_ifr = (ratios
+               .set_index(['date'])
+               .sort_index()
+               .loc[:, 'adj_ifr'])
+    cfr = (ratios
+           .set_index(['date'])
+           .sort_index()
+           .loc[:, 'cfr'])
+
+    sns.set_style('whitegrid')
+    fig, ax = plt.subplots(2, 2, figsize=(12, 8))
+    ax[0, 0].plot(daily_infections,
+                  color='coral', label='Infections')
+    ax[0, 0].scatter(daily_cases.index, daily_cases,
+                     c='c', edgecolors='darkcyan', label='Confirmed cases')
+    ax[0, 0].set_ylabel('Daily')
+    ax[0, 0].tick_params('x', labelrotation=60)
+
+    ax[0, 1].plot(cumulative_infections,
+                  color='coral', label='Infections')
+    ax[0, 1].scatter(cumulative_cases.index, cumulative_cases,
+                     c='c', edgecolors='darkcyan', label='Confirmed cases')
+    ax[0, 1].set_ylabel('Cumulative')
+    ax[0, 1].tick_params('x', labelrotation=60)
+
+    ax[1, 0].plot(ifr, color='indianred', label='IFR')
+    ax[1, 0].plot(adj_ifr, linestyle='--', color='dodgerblue', label='IFR (adjusted)')
+    ax[1, 0].set_ylabel('Infection-fatality ratio')
+    ax[1, 0].tick_params('x', labelrotation=60)
+
+    ax[1, 1].plot(daily_cases / daily_infections, 
+                  color='darkorchid')
+    ax[1, 1].set_ylabel('Infection-detection rate')
+    ax[1, 1].tick_params('x', labelrotation=60)
+
+    ax[0, 0].legend(loc=2)
+    ax[0, 1].legend(loc=2)
+    ax[1, 0].legend(loc=1)
+    
+    fig.suptitle(f'{location_name} [{location_id}]', y=1.0025)
+    fig.tight_layout()
+    if plot_file:
+        fig.savefig(plot_file, bbox_inches='tight')
+        plt.close(fig)
+    else:
+        plt.show()
+

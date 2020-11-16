@@ -14,7 +14,8 @@ warnings.simplefilter('ignore')
 PARENT_MODEL_LOCATIONS = [189]  # Tanzania
 
 
-def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root: Path,
+def make_deaths(app_metadata: cli_tools.Metadata,
+                input_root: Path, ifr_root: Path, output_root: Path,
                 holdout_days: int, dow_holdouts: int, n_draws: int):
     logger.debug("Setting up output directories.")
     model_dir = output_root / 'models'
@@ -27,6 +28,8 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     logger.debug("Loading and cleaning data.")
     hierarchy = data.load_most_detailed_locations(input_root)
     agg_hierarchy = data.load_aggregate_locations(input_root)
+    
+    ifr = data.load_ifr(ifr_root)
 
     full_data = data.load_full_data(input_root)
     full_data, manipulation_metadata = data.evil_doings(full_data)
@@ -95,6 +98,12 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     data_path = Path(working_dir) / 'model_data.pkl'
     with data_path.open('wb') as data_file:
         pickle.dump(model_data, data_file, -1)
+    ifr_path = Path(working_dir) / 'ifr.pkl'
+    with ifr_path.open('wb') as ifr_file:
+        pickle.dump(ifr, ifr_file, -1)
+    hierarchy_path = Path(working_dir) / 'hierarchy.pkl'
+    with hierarchy_path.open('wb') as hierarchy_file:
+        pickle.dump(hierarchy, hierarchy_file, -1)
     results_path = Path(working_dir) / 'model_outputs'
     shell_tools.mkdir(results_path)
     model_settings['results_dir'] = str(results_path)
@@ -103,15 +112,16 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
         yaml.dump(model_settings, settings_file)
     job_args_map = {
         location_id: [models.__file__,
-                      location_id, data_path, settings_path, dow_holdouts, str(plot_dir), n_draws,
+                      location_id, data_path, ifr_path, hierarchy_path, settings_path, 
+                      dow_holdouts, str(plot_dir), n_draws,
                       cluster.OMP_NUM_THREADS]
         for location_id in model_data['location_id'].unique() if location_id not in PARENT_MODEL_LOCATIONS
     }
     cluster.run_cluster_jobs('covid_death_models', output_root, job_args_map)
 
-    logger.debug("Compiling results.")
+    logger.debug("Compiling death results.")
     results = []
-    for result_path in results_path.iterdir():
+    for result_path in [f for f in results_path.iterdir() if '_deaths' in str(f)]:
         with result_path.open('rb') as result_file:
             results.append(pickle.load(result_file))
     post_model_data = pd.concat([r.model_data for r in results]).reset_index(drop=True)
@@ -141,15 +151,16 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
         date_diffs.to_csv(output_root / 'problem_location_report.csv', index=False)
         raise ValueError('Dropping NaNs in middle of time series (see problem_location_report.csv)')
 
-    logger.debug("Fill specified model locations with parent and plot them.")
-    smooth_draws, model_data = data.apply_parents(PARENT_MODEL_LOCATIONS, hierarchy, smooth_draws,
-                                                  model_data, pop_data)
-    summarize.summarize_and_plot(
-        smooth_draws.loc[smooth_draws['location_id'].isin(PARENT_MODEL_LOCATIONS)].rename(columns={'date': 'Date'}),
-        model_data.loc[model_data['location_id'].isin(PARENT_MODEL_LOCATIONS)],
-        str(plot_dir), obs_var=obs_var, spline_vars=spline_vars, pop_data=pop_data
-    )
-    app_metadata.update({'parent_model_locations': PARENT_MODEL_LOCATIONS})
+    # logger.debug("Fill specified model locations with parent and plot them.")
+    # raise ValueError('We don't use the parent model locations, and would need to replace infections as well.')
+    # smooth_draws, model_data = data.apply_parents(PARENT_MODEL_LOCATIONS, hierarchy, smooth_draws,
+    #                                               model_data, pop_data)
+    # summarize.summarize_and_plot(
+    #     smooth_draws.loc[smooth_draws['location_id'].isin(PARENT_MODEL_LOCATIONS)].rename(columns={'date': 'Date'}),
+    #     model_data.loc[model_data['location_id'].isin(PARENT_MODEL_LOCATIONS)],
+    #     str(plot_dir), obs_var=obs_var, spline_vars=spline_vars, pop_data=pop_data
+    # )
+    # app_metadata.update({'parent_model_locations': PARENT_MODEL_LOCATIONS})
 
     logger.debug("Make post-model aggregates and plot them.")
     agg_locations = [aggregate.Location(1, 'Global')] + agg_locations
@@ -163,10 +174,14 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
 
     logger.debug("Compiling plots.")
     plot_hierarchy = aggregate.get_sorted_hierarchy_w_aggs(hierarchy, agg_hierarchy)
-    possible_pdfs = ['-1.pdf'] + [f'{l}.pdf' for l in plot_hierarchy.location_id]
-    existing_pdfs = [str(x).split('/')[-1] for x in plot_dir.iterdir() if x.is_file()]
-    pdfs = [f'{plot_dir}/{pdf}' for pdf in possible_pdfs if pdf in existing_pdfs]
-    pdf_merger.pdf_merger(pdfs=pdfs, outfile=str(output_root / 'model_results.pdf'))
+    possible_deaths_pdfs = ['-1_deaths.pdf'] + [f'{l}_deaths.pdf' for l in plot_hierarchy.location_id]
+    existing_deaths_pdfs = [str(x).split('/')[-1] for x in plot_dir.iterdir() if x.is_file()]
+    deaths_pdfs = [f'{plot_dir}/{pdf}' for pdf in possible_deaths_pdfs if pdf in existing_deaths_pdfs]
+    pdf_merger.pdf_merger(pdfs=deaths_pdfs, outfile=str(output_root / 'model_results_deaths.pdf'))
+    possible_infections_pdfs = [f'{l}_infections.pdf' for l in plot_hierarchy.location_id]
+    existing_infections_pdfs = [str(x).split('/')[-1] for x in plot_dir.iterdir() if x.is_file()]
+    infections_pdfs = [f'{plot_dir}/{pdf}' for pdf in possible_infections_pdfs if pdf in existing_infections_pdfs]
+    pdf_merger.pdf_merger(pdfs=infections_pdfs, outfile=str(output_root / 'model_results_infections.pdf'))
 
     logger.debug("Writing output data.")
     model_data = model_data.rename(columns={'Date': 'date'}).set_index(['location_id', 'date'])

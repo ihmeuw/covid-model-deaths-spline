@@ -138,6 +138,14 @@ def make_deaths(app_metadata: cli_tools.Metadata,
     obs_var = smoother_settings['obs_var']
     spline_vars = smoother_settings['spline_vars']
     
+    logger.debug("Compiling (daily) infection results.")
+    results = []
+    for result_path in [f for f in results_path.iterdir() if '_infections' in str(f)]:
+        with result_path.open('rb') as result_file:
+            results.append(pickle.load(result_file))
+    infections = pd.concat([r.infections for r in results]).reset_index(drop=True)
+    ratios = pd.concat([r.ratios for r in results]).reset_index(drop=True)
+    
     logger.debug("Capturing location-dates with NaNs and dropping them.")
     nan_rows = smooth_draws.isnull().any(axis=1)
     smooth_draws_nans = smooth_draws.loc[nan_rows].reset_index(drop=True)
@@ -162,7 +170,7 @@ def make_deaths(app_metadata: cli_tools.Metadata,
     # )
     # app_metadata.update({'parent_model_locations': PARENT_MODEL_LOCATIONS})
 
-    logger.debug("Make post-model aggregates and plot them.")
+    logger.debug("Make post-model aggregates of deaths and plot them.")
     agg_locations = [aggregate.Location(1, 'Global')] + agg_locations
     agg_model_data = aggregate.compute_location_aggregates_data(model_data, hierarchy, agg_locations)
     agg_model_data['location_id'] = -agg_model_data['location_id']
@@ -172,7 +180,7 @@ def make_deaths(app_metadata: cli_tools.Metadata,
     agg_draw_df['location_id'] = -agg_draw_df['location_id']
     summarize.summarize_and_plot(agg_draw_df, agg_model_data, str(plot_dir), obs_var=obs_var, spline_vars=spline_vars)
 
-    logger.debug("Compiling plots.")
+    logger.debug("Compiling plots for both deaths and infections.")
     plot_hierarchy = aggregate.get_sorted_hierarchy_w_aggs(hierarchy, agg_hierarchy)
     possible_deaths_pdfs = ['-1_deaths.pdf'] + [f'{l}_deaths.pdf' for l in plot_hierarchy.location_id]
     existing_deaths_pdfs = [str(x).split('/')[-1] for x in plot_dir.iterdir() if x.is_file()]
@@ -183,7 +191,7 @@ def make_deaths(app_metadata: cli_tools.Metadata,
     infections_pdfs = [f'{plot_dir}/{pdf}' for pdf in possible_infections_pdfs if pdf in existing_infections_pdfs]
     pdf_merger.pdf_merger(pdfs=infections_pdfs, outfile=str(output_root / 'model_results_infections.pdf'))
 
-    logger.debug("Writing output data.")
+    logger.debug("Writing death data.")
     model_data = model_data.rename(columns={'Date': 'date'}).set_index(['location_id', 'date'])
     noisy_draws = noisy_draws.set_index(['location_id', 'date'])
     noisy_draws['observed'] = model_data['Death rate'].notnull().astype(int)
@@ -193,3 +201,5 @@ def make_deaths(app_metadata: cli_tools.Metadata,
     noisy_draws.reset_index().to_csv(output_root / 'model_results.csv', index=False)
     smooth_draws.reset_index().to_csv(output_root / 'model_results_refit.csv', index=False)
     smooth_draws_nans.to_csv(output_root / 'model_results_refit_nans.csv', index=False)
+    
+    logger.debug("Writing infection data.")

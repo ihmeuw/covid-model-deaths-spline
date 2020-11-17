@@ -273,6 +273,10 @@ def infection_plots(infections: pd.DataFrame, model_data: pd.DataFrame,
            .set_index(['date'])
            .sort_index()
            .loc[:, 'ifr'])
+    raw_adj_ifr = (ratios
+                   .set_index(['date'])
+                   .sort_index()
+                   .loc[:, 'raw_adj_ifr'])
     adj_ifr = (ratios
                .set_index(['date'])
                .sort_index()
@@ -299,7 +303,8 @@ def infection_plots(infections: pd.DataFrame, model_data: pd.DataFrame,
     ax[0, 1].tick_params('x', labelrotation=60)
 
     ax[1, 0].plot(ifr, color='indianred', label='IFR')
-    ax[1, 0].plot(adj_ifr, linestyle='--', color='dodgerblue', label='IFR (adjusted)')
+    ax[1, 0].plot(raw_adj_ifr, linestyle='--', color='dodgerblue', label='IFR (adjusted)', alpha=0.5)
+    ax[1, 0].plot(adj_ifr, color='dodgerblue', label='IFR (adjusted + smoothed)')
     ax[1, 0].set_ylabel('Infection-fatality ratio')
     ax[1, 0].tick_params('x', labelrotation=60)
 

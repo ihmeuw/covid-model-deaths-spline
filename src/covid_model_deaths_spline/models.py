@@ -12,9 +12,9 @@ from loguru import logger
 import numpy as np
 import pandas as pd
 import yaml
-import statsmodels.api as sm
 
 from covid_model_deaths_spline import cfr_model, smoother, summarize, plotter
+from mrtool import MRData, LinearCovModel, MRBRT
 
 DEATH_RESULTS = namedtuple('Results', 'model_data noisy_draws smooth_draws')
 INFECTION_RESULTS = namedtuple('Results', 'infections ratios')
@@ -85,6 +85,87 @@ def model_iteration(location_id: int, model_data: pd.DataFrame, model_settings: 
     return DEATH_RESULTS(model_data, noisy_draws, smooth_draws)
 
 
+def smooth_ifr(ifr_data: pd.DataFrame) -> np.array:
+    ifr_data = ifr_data.reset_index()
+    breakpoint = ifr_data.loc[ifr_data['ifr'].diff() == 0, 'Date'].values[0]
+    last_observed = ifr_data.loc[ifr_data['raw_adj_ifr'].notnull(), 'Date'].values[-1]
+    
+    ifr_data['ifr_to_model'] = ifr_data['ifr']
+    ifr_data.loc[ifr_data['raw_adj_ifr'].notnull(), 'ifr_to_model'] = ifr_data['raw_adj_ifr']
+    ifr_data['obs_se'] = 0.1
+    ifr_data['time'] = (ifr_data['Date'] - ifr_data['Date'].min()).dt.days
+    ifr_data['study_id'] = 1
+    ifr_data['intercept'] = 1
+    
+    start_adj = max(60, ifr_data.loc[(ifr_data['Date'] > pd.to_datetime('2020-05-01')) & 
+                                     (ifr_data['ifr_adjustment'] < 1), 'time'].min())
+    breakpoint = (breakpoint - ifr_data['Date'].min()).days
+    last_observed = (last_observed - ifr_data['Date'].min()).days
+    end_adj = ifr_data.loc[ifr_data['ifr_adjustment'] < 1, 'time'].max()
+    
+    k1 = min(start_adj, breakpoint)
+    k2 = max(last_observed, end_adj)
+    if k2 - k1 > 100:
+        t_knots = np.array([0.,
+                            (k1 - 30) / ifr_data['time'].max(), 
+                            k1 / ifr_data['time'].max(),
+                            np.mean([k2, k1]) / ifr_data['time'].max(),
+                            k2 / ifr_data['time'].max(),
+                            (k2 + 60) / ifr_data['time'].max(), 
+                            1.])
+    else:
+        t_knots = np.array([0.,
+                            (k1 - 30) / ifr_data['time'].max(), 
+                            k1 / ifr_data['time'].max(),
+                            k2 / ifr_data['time'].max(),
+                            (k2 + 60) / ifr_data['time'].max(), 
+                            1.])
+    
+    mr_data = MRData(
+        df=ifr_data,
+        col_obs='ifr_to_model',
+        col_obs_se='obs_se',
+        col_covs=['intercept', 'time'],
+        col_study_id='study_id'
+    )
+    intercept = LinearCovModel(
+        alt_cov='intercept',
+        use_re=True,
+        prior_gamma_uniform=np.array([0., 0.]),
+        name='intercept'
+    )
+    spline_model = LinearCovModel(
+        alt_cov='time',
+        use_re=False,
+        use_spline=True,
+        spline_knots_type='frequency',
+        spline_degree=3,
+        spline_l_linear=True,
+        spline_r_linear=True,
+        spline_knots=t_knots,
+        name='time'
+    )
+    mr_model = MRBRT(data=mr_data,
+                     cov_models=[intercept, spline_model],
+                     inlier_pct=0.99)
+    mr_model.fit_model()
+    
+    
+    spline_model = mr_model.linear_cov_models[1]
+    spline_model = spline_model.create_spline(mr_model.data)
+    coefs = np.hstack([mr_model.beta_soln[0], mr_model.beta_soln[0] + mr_model.beta_soln[1:]])
+    mat = spline_model.design_mat(ifr_data['time'])
+    smooth_adj_ifr = mat.dot(coefs)
+    
+    # ifr_data = ifr_data.set_index('Date')
+    # plt.plot(ifr_data['ifr'])
+    # plt.plot(ifr_data['adj_ifr'])
+    # plt.plot(ifr_data['smooth_adj_ifr'])
+    # plt.show()
+    
+    return smooth_adj_ifr
+    
+    
 def adjust_ifr(ifr: pd.Series,
                smooth_deaths: pd.Series, 
                cases: pd.Series,
@@ -93,29 +174,30 @@ def adjust_ifr(ifr: pd.Series,
     All metrics taken in as daily.
     Cases and pseudo-deaths are indexed on date of deaths.
     Assumes IFR is indexed on date of deaths.
+    Only adjusts if > 2 weeks of bad CFRs.
     '''
     cfr = (smooth_deaths / cases).rename('cfr')
+    cfr.loc[cfr <= 0] = np.nan
 
     cdr = ((1 / cfr) * ifr).rename('cdr')
 
     ifr_adjustment = cdr_ulim / cdr
-    over_threshold = ifr_adjustment > 1
-    bad_2weeks = over_threshold.sum() > 14
-    if bad_2weeks:
-        ifr_adjustment.loc[over_threshold] = 1
-    else:
-        ifr_adjustment = 1
+    bad_2weeks = (ifr_adjustment.dropna() < 1).sum() > 14
+    ifr_adjustment.loc[ifr_adjustment > 1] = 1
     ifr_adjustment = ifr_adjustment.rename('ifr_adjustment')
     
     adj_ifr = pd.concat([ifr, ifr_adjustment], axis=1)
-    adj_ifr['ifr_adjustment'] = adj_ifr['ifr_adjustment'].fillna(method='bfill')
-    adj_ifr['adj_ifr'] = adj_ifr['ifr'] * adj_ifr['ifr_adjustment']
+    past = adj_ifr['ifr_adjustment'].fillna(method='bfill').notnull()
+    missing_adj = adj_ifr['ifr_adjustment'].isnull()
+    adj_ifr.loc[past & missing_adj, 'ifr_adjustment'] = 1
+    adj_ifr['raw_adj_ifr'] = adj_ifr['ifr'] * adj_ifr['ifr_adjustment']
     if bad_2weeks:
-        adj_ifr['adj_ifr'] = sm.nonparametric.lowess(adj_ifr['adj_ifr'].values, 
-                                                     np.arange(len(adj_ifr)),
-                                                     frac=0.15).T[1]
+        adj_ifr['adj_ifr'] = smooth_ifr(adj_ifr)
+        adj_ifr.loc[adj_ifr['adj_ifr'] > adj_ifr['ifr'], 'adj_ifr'] = adj_ifr['ifr']
+    else:
+        adj_ifr['adj_ifr'] = adj_ifr['ifr']
     
-    return cfr.dropna(), adj_ifr['adj_ifr'].dropna()
+    return cfr.dropna(), adj_ifr['raw_adj_ifr'].dropna(), adj_ifr['adj_ifr'].dropna()
 
 
 def get_infections(data: pd.DataFrame, ifr: pd.Series, draw_cols: List[str]) -> pd.DataFrame:
@@ -181,8 +263,9 @@ def run_models(location_id: int,
             ifr = pickle.load(in_file)
         for ifr_location in path_to_top_parent:
             if ifr_location in ifr['location_id'].to_list():
+                ifr = ifr.loc[ifr['location_id'] == ifr_location]
+                ifr['location_id'] = location_id
                 ifr = (ifr
-                       .loc[ifr['location_id'] == ifr_location]
                        .rename(columns={'date':'Date'})
                        .set_index(['location_id', 'Date'])
                        .sort_index()
@@ -234,38 +317,40 @@ def run_models(location_id: int,
     # convert to infections (adjust and apply IFR in daily space)
     if is_most_detailed:
         draw_cols = [f'draw_{d}' for d in range(np.sum(iteration_n_draws))]
-        cfr, adj_ifr = adjust_ifr(ifr=ifr.copy(),
-                                  smooth_deaths=(smooth_draws
-                                                 .set_index(['location_id', 'Date'])
-                                                 .sort_index()
-                                                 .loc[:, draw_cols]
-                                                 .mean(axis=1)
-                                                 .rename('smooth_deaths')
-                                                 .diff()
-                                                 .dropna()),
-                                  # pseudo_deaths=(model_data
-                                  #              .set_index(['location_id', 'Date'])
-                                  #              .sort_index()
-                                  #              .loc[:, 'Predicted death rate (CFR)']
-                                  #              .rename('pseudo_deaths')
-                                  #              .diff()
-                                  #              .dropna()),
-                                  cases=(model_data
-                                         .set_index(['location_id', 'Date'])
-                                         .sort_index()
-                                         .loc[:, 'Confirmed case rate']
-                                         .rename('cases')
-                                         .diff()
-                                         .dropna()))
+        cfr, raw_adj_ifr, adj_ifr = adjust_ifr(ifr=ifr.copy(),
+                                               smooth_deaths=(smooth_draws
+                                                              .set_index(['location_id', 'Date'])
+                                                              .sort_index()
+                                                              .loc[:, draw_cols]
+                                                              .mean(axis=1)
+                                                              .rename('smooth_deaths')
+                                                              .diff()
+                                                              .dropna()),
+                                               # pseudo_deaths=(model_data
+                                               #              .set_index(['location_id', 'Date'])
+                                               #              .sort_index()
+                                               #              .loc[:, 'Predicted death rate (CFR)']
+                                               #              .rename('pseudo_deaths')
+                                               #              .diff()
+                                               #              .dropna()),
+                                               cases=(model_data
+                                                      .set_index(['location_id', 'Date'])
+                                                      .sort_index()
+                                                      .loc[:, 'Confirmed case rate']
+                                                      .rename('cases')
+                                                      .diff()
+                                                      .dropna()))
         infections = get_infections(smooth_draws.copy(), adj_ifr, draw_cols)
         infections = infections.rename(index=str, columns={'Date':'date'})
-        ratios = pd.concat([ifr, adj_ifr, cfr], axis=1).reset_index()
+        ratios = pd.concat([ifr, raw_adj_ifr, adj_ifr, cfr], axis=1).reset_index()
         ratios = ratios.rename(index=str, columns={'Date':'date'})
         plotter.infection_plots(infections.copy(),
                                 model_data.copy(),
                                 ratios.copy(),
                                 draw_cols,
                                 f'{plot_dir}/{location_id}_infections.pdf')
+        infections[draw_cols] = infections[draw_cols] * model_data['population'][0]
+        infections[draw_cols] = np.diff(infections[draw_cols], prepend=0, axis=0)
     
     # plot
     logger.info('Producing plots.')
@@ -296,9 +381,7 @@ def run_models(location_id: int,
             pickle.dump(infection_result, outfile, -1)
 
     logger.info('**Done**')
-    
-    
-    f'{plot_dir}/{location_id}_infections.pdf'
+
     
 if __name__ == '__main__':
     os.environ['OMP_NUM_THREADS'] = sys.argv[9]

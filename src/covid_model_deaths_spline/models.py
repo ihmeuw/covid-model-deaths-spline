@@ -137,8 +137,8 @@ def smooth_ifr(ifr_data: pd.DataFrame) -> np.array:
                                     end_value-k1sub30_value],
                                   [b0,
                                    k1_value-k1sub30_value,
-                                   k1_k2_value-k1sub30_value,
-                                   k1_k2_value-k1sub30_value,
+                                   k_t1-k1sub30_value,
+                                   k_t2-k1sub30_value,
                                    k2_value-k1sub30_value,
                                    end_value-k1sub30_value,
                                    end_value-k1sub30_value]])

@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 import warnings
 
@@ -5,11 +6,18 @@ from covid_shared import shell_tools, cli_tools
 import dill as pickle
 from loguru import logger
 import pandas as pd
+import numpy as np
 import yaml
+
+import tqdm
+import functools
+import multiprocessing
 
 from covid_model_deaths_spline import data, models, pdf_merger, cluster, summarize, aggregate
 
 warnings.simplefilter('ignore')
+
+DURATION = 12
 
 PARENT_MODEL_LOCATIONS = [189]  # Tanzania
 
@@ -19,9 +27,11 @@ def make_deaths(app_metadata: cli_tools.Metadata,
                 holdout_days: int, dow_holdouts: int, n_draws: int):
     logger.debug("Setting up output directories.")
     model_dir = output_root / 'models'
+    infections_dir = output_root / 'infections'
     spline_settings_dir = output_root / 'spline_settings'
     plot_dir = output_root / 'plots'
     shell_tools.mkdir(model_dir)
+    shell_tools.mkdir(infections_dir)
     shell_tools.mkdir(spline_settings_dir)
     shell_tools.mkdir(plot_dir)
 
@@ -35,8 +45,8 @@ def make_deaths(app_metadata: cli_tools.Metadata,
     full_data, manipulation_metadata = data.evil_doings(full_data)
     app_metadata.update({'data_manipulation': manipulation_metadata})
 
-    case_data = data.get_shifted_data(full_data, 'Confirmed', 'Confirmed case rate')
-    hosp_data = data.get_shifted_data(full_data, 'Hospitalizations', 'Hospitalization rate')
+    case_data = data.get_shifted_data(full_data, 'Confirmed', 'Confirmed case rate', DURATION)
+    hosp_data = data.get_shifted_data(full_data, 'Hospitalizations', 'Hospitalization rate', DURATION)
     death_data = data.get_death_data(full_data)
     pop_data = data.get_population_data(input_root, hierarchy)
 
@@ -147,17 +157,25 @@ def make_deaths(app_metadata: cli_tools.Metadata,
     ratios = pd.concat([r.ratios for r in results]).reset_index(drop=True)
     
     logger.debug("Capturing location-dates with NaNs and dropping them.")
+    smooth_draws = smooth_draws.set_index(['location_id', 'date'])
+    infections = infections.set_index(['location_id', 'date'])
     nan_rows = smooth_draws.isnull().any(axis=1)
-    smooth_draws_nans = smooth_draws.loc[nan_rows].reset_index(drop=True)
-    smooth_draws = smooth_draws.loc[~nan_rows].reset_index(drop=True)
-    nan_min = smooth_draws_nans.groupby('location_id')['date'].min()
-    val_max = smooth_draws.groupby('location_id')['date'].max()
-    date_diffs = (nan_min - val_max).apply(lambda x: x.days)
-    date_diffs = date_diffs.loc[date_diffs.notnull()]
-    app_metadata.update({'nan_locations': date_diffs.index.to_list()})
-    if (date_diffs < 0).any():
-        date_diffs.to_csv(output_root / 'problem_location_report.csv', index=False)
-        raise ValueError('Dropping NaNs in middle of time series (see problem_location_report.csv)')
+    smooth_draws_nans = smooth_draws.loc[nan_rows].reset_index()
+    if smooth_draws_nans.empty:
+        smooth_draws = smooth_draws.reset_index()
+        infections = infections.reset_index()
+        app_metadata.update({'nan_locations': []})
+    else:
+        smooth_draws = smooth_draws.loc[~nan_rows].reset_index()
+        infections = infections.loc[~nan_rows].reset_index()
+        nan_min = smooth_draws_nans.groupby('location_id')['date'].min()
+        val_max = smooth_draws.groupby('location_id')['date'].max()
+        date_diffs = (nan_min - val_max).apply(lambda x: x.days)
+        date_diffs = date_diffs.loc[date_diffs.notnull()]
+        app_metadata.update({'nan_locations': date_diffs.index.to_list()})
+        if (date_diffs < 0).any():
+            date_diffs.to_csv(output_root / 'problem_location_report.csv', index=False)
+            raise ValueError('Dropping NaNs in middle of time series (see problem_location_report.csv)')
 
     # logger.debug("Fill specified model locations with parent and plot them.")
     # raise ValueError('We don't use the parent model locations, and would need to replace infections as well.')
@@ -202,4 +220,31 @@ def make_deaths(app_metadata: cli_tools.Metadata,
     smooth_draws.reset_index().to_csv(output_root / 'model_results_refit.csv', index=False)
     smooth_draws_nans.to_csv(output_root / 'model_results_refit_nans.csv', index=False)
     
-    logger.debug("Writing infection data.")
+    logger.debug("Writing infection data (convert deaths to daily).")
+    infections = infections.set_index(['location_id', 'date'])
+    infections['observed_infections'] = model_data['Death rate'].notnull().astype(int)
+    infections = infections.reset_index()
+    infections['date'] = infections['date'] - pd.Timedelta(days=DURATION + 11)
+    infections = infections.set_index(['location_id', 'date'])
+    draw_cols = [f'draw_{d}' for d in range(n_draws)]
+    smooth_draws = (smooth_draws
+                    .sort_index()
+                    .reset_index()
+                    .groupby('location_id')
+                    .apply(lambda x: pd.DataFrame(np.diff(x[draw_cols], axis=0, prepend=0),
+                                                  index=x['date'],
+                                                  columns=draw_cols)))
+    smooth_draws['observed_deaths'] = model_data['Death rate'].notnull().astype(int)
+    _write_infections = functools.partial(
+        data.write_infections,
+        smooth_draws=smooth_draws.copy(),
+        infections=infections.copy(),
+        md_locs=hierarchy['location_id'].to_list(),
+        infections_dir=infections_dir,
+        duration=DURATION + 11
+    )
+    with multiprocessing.Pool(25) as p:
+        draw_files = list(tqdm.tqdm(p.imap(_write_infections, list(range(n_draws))), total=n_draws, file=sys.stdout))
+    logger.debug(f"Example infection draw file: {str(draw_files[0])}")
+    ratios.to_csv(infections_dir / 'ratios.csv', index=False)
+    

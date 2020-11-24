@@ -74,7 +74,7 @@ def load_full_data(inputs_root: Path) -> pd.DataFrame:
     return data
 
 
-def get_shifted_data(full_data: pd.DataFrame, count_var: str, rate_var: str, shift_size: int = 8) -> pd.DataFrame:
+def get_shifted_data(full_data: pd.DataFrame, count_var: str, rate_var: str, shift_size: int) -> pd.DataFrame:
     """Filter and clean case data and shift into the future."""
     data = full_data.loc[:, ['location_id', 'Date', count_var, 'population']]
     data[rate_var] = data[count_var] / data['population']
@@ -257,3 +257,23 @@ def load_ifr(ifr_root: Path):
     keep_columns = ['location_id', 'Date', 'ifr']
     
     return data.loc[:, keep_columns]
+
+
+def write_infections(draw: int, smooth_draws: pd.DataFrame, infections: pd.DataFrame,
+                     md_locs: List[int], infections_dir: Path, duration: int):
+    inf_death_data = pd.concat([
+        (smooth_draws
+         .rename(columns={f'draw_{draw}':'deaths_draw'})
+         .loc[:, ['deaths_draw', 'observed_deaths']]),
+        (infections
+         .rename(columns={f'draw_{draw}':'infections_draw'})
+         .loc[:, ['infections_draw', 'observed_infections']])
+    ], axis=1)
+    inf_death_data['draw'] = draw
+    inf_death_data['duration'] = duration
+    inf_death_data = inf_death_data.reset_index()
+    most_detailed = inf_death_data['location_id'].isin(md_locs)
+    inf_death_data = inf_death_data.loc[most_detailed]
+    inf_death_data.to_csv(infections_dir / f'draw_{draw}.csv', index=False)
+    
+    return infections_dir / f'draw_{draw}.csv'

@@ -55,7 +55,7 @@ def run_deaths(run_metadata,
 
     ifr_root = cli_tools.get_last_stage_directory(ifr_version,
                                                   last_stage_root=Path('/ihme/covid-19/infection-fatality-ratio'))
-    run_metadata.update_from_path('ifr_metadata', ifr_root / paths.METADATA_FILE_NAME)
+    #run_metadata.update_from_path('ifr_metadata', ifr_root / paths.METADATA_FILE_NAME)
     
     output_root = Path(output_root).resolve()
     cli_tools.setup_directory_structure(output_root, with_production=True)

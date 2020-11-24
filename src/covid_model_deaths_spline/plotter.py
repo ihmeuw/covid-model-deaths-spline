@@ -112,7 +112,7 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame,
             if 'death' in smooth_variable.lower():
                 ax_daily.set_xlabel('Date', fontsize=14)
             else:
-                ax_daily.set_xlabel('Date (+8 days)', fontsize=14)
+                ax_daily.set_xlabel('Date of death', fontsize=14)
             ax_daily.set_ylabel(f'Daily {plot_label}', fontsize=14)
 
     # predictions - cumul

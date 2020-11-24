@@ -15,6 +15,7 @@ import yaml
 
 from covid_model_deaths_spline import cfr_model, smoother, summarize, plotter
 from mrtool import MRData, LinearCovModel, MRBRT
+from xspline import XSpline
 
 DEATH_RESULTS = namedtuple('Results', 'model_data noisy_draws smooth_draws')
 INFECTION_RESULTS = namedtuple('Results', 'infections ratios')
@@ -86,9 +87,12 @@ def model_iteration(location_id: int, model_data: pd.DataFrame, model_settings: 
 
 
 def smooth_ifr(ifr_data: pd.DataFrame) -> np.array:
-    ifr_data = ifr_data.reset_index()
+    ifr_data = ifr_data.sort_index().reset_index()
     breakpoint = ifr_data.loc[ifr_data['ifr'].diff() == 0, 'Date'].values[0]
     last_observed = ifr_data.loc[ifr_data['raw_adj_ifr'].notnull(), 'Date'].values[-1]
+    
+    ifr_data['ifr'] = np.log(ifr_data['ifr'])
+    ifr_data['raw_adj_ifr'] = np.log(ifr_data['raw_adj_ifr'])
     
     ifr_data['ifr_to_model'] = ifr_data['ifr']
     ifr_data.loc[ifr_data['raw_adj_ifr'].notnull(), 'ifr_to_model'] = ifr_data['raw_adj_ifr']
@@ -105,22 +109,40 @@ def smooth_ifr(ifr_data: pd.DataFrame) -> np.array:
     
     k1 = min(start_adj, breakpoint)
     k2 = max(last_observed, end_adj)
-    if k2 - k1 > 100:
-        t_knots = np.array([0.,
-                            (k1 - 30) / ifr_data['time'].max(), 
-                            k1 / ifr_data['time'].max(),
-                            np.mean([k2, k1]) / ifr_data['time'].max(),
-                            k2 / ifr_data['time'].max(),
-                            (k2 + 60) / ifr_data['time'].max(), 
-                            1.])
-    else:
-        t_knots = np.array([0.,
-                            (k1 - 30) / ifr_data['time'].max(), 
-                            k1 / ifr_data['time'].max(),
-                            k2 / ifr_data['time'].max(),
-                            (k2 + 60) / ifr_data['time'].max(), 
-                            1.])
-    
+    k_t1 = int(k1 + ((k2 - k1) / 3))
+    k_t2 = int(k1 + 2*((k2 - k1) / 3))
+    start_value = ifr_data['ifr'].values[0]
+    k1sub30_value = ifr_data['ifr'].values[k1 - 30]
+    k1_value = ifr_data['ifr'].values[k1]
+    k_t1_value = ifr_data['ifr'].values[k_t1]
+    k_t2_value = ifr_data['ifr'].values[k_t2]
+    k2_value = ifr_data['ifr'].values[k2]
+    end_value = ifr_data['ifr'].values[-1]
+    t_knots = np.array([0.,
+                        (k1 - 30) / ifr_data['time'].max(),
+                        k1 / ifr_data['time'].max(),
+                        k_t1 / ifr_data['time'].max(),
+                        k_t2 / ifr_data['time'].max(),
+                        k2 / ifr_data['time'].max(),
+                        (k2 + 60) / ifr_data['time'].max(),
+                        1.])
+    dmat0 = XSpline(t_knots, 3, True, True).design_mat(ifr_data['time'])[0]
+    b0 = ((start_value - (k1sub30_value * dmat0[0])) / dmat0[1]) - k1sub30_value
+    prior_beta_uniform = np.array([[b0,
+                                    k1_value-k1sub30_value,
+                                    -np.inf,
+                                    -np.inf,
+                                    -np.inf,
+                                    end_value-k1sub30_value,
+                                    end_value-k1sub30_value],
+                                  [b0,
+                                   k1_value-k1sub30_value,
+                                   k1_k2_value-k1sub30_value,
+                                   k1_k2_value-k1sub30_value,
+                                   k2_value-k1sub30_value,
+                                   end_value-k1sub30_value,
+                                   end_value-k1sub30_value]])
+        
     mr_data = MRData(
         df=ifr_data,
         col_obs='ifr_to_model',
@@ -128,9 +150,11 @@ def smooth_ifr(ifr_data: pd.DataFrame) -> np.array:
         col_covs=['intercept', 'time'],
         col_study_id='study_id'
     )
+    
     intercept = LinearCovModel(
         alt_cov='intercept',
         use_re=True,
+        prior_beta_uniform=np.array([k1sub30_value, k1sub30_value]),
         prior_gamma_uniform=np.array([0., 0.]),
         name='intercept'
     )
@@ -143,6 +167,8 @@ def smooth_ifr(ifr_data: pd.DataFrame) -> np.array:
         spline_l_linear=True,
         spline_r_linear=True,
         spline_knots=t_knots,
+        #prior_spline_convexity='convex',
+        prior_beta_uniform=prior_beta_uniform,
         name='time'
     )
     mr_model = MRBRT(data=mr_data,
@@ -156,11 +182,17 @@ def smooth_ifr(ifr_data: pd.DataFrame) -> np.array:
     coefs = np.hstack([mr_model.beta_soln[0], mr_model.beta_soln[0] + mr_model.beta_soln[1:]])
     mat = spline_model.design_mat(ifr_data['time'])
     smooth_adj_ifr = mat.dot(coefs)
+    smooth_adj_ifr = np.exp(smooth_adj_ifr)
     
+    # ifr_data['ifr'] = np.exp(ifr_data['ifr'])
+    # ifr_data['raw_adj_ifr'] = np.exp(ifr_data['raw_adj_ifr'])
     # ifr_data = ifr_data.set_index('Date')
     # plt.plot(ifr_data['ifr'])
-    # plt.plot(ifr_data['adj_ifr'])
-    # plt.plot(ifr_data['smooth_adj_ifr'])
+    # plt.plot(ifr_data['raw_adj_ifr'])
+    # plt.plot(ifr_data.index, smooth_adj_ifr)
+    # for k in t_knots:
+    #     plt.axvline(ifr_data.index[int((len(ifr_data) - 1) * k)], linestyle='--', alpha=0.5, color='grey')
+    # plt.xticks(rotation=60)
     # plt.show()
     
     return smooth_adj_ifr

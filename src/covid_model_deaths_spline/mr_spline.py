@@ -115,13 +115,17 @@ class SplineFit:
         return end_boundary_pctile  # start_boundary_pctile,
 
     def get_ensemble_knots(self, n_i_knots: int, spline_data: np.array, observed: np.array,
-                           spline_options: Dict, terminal_days: int = 4) -> List[np.array]:
+                           spline_options: Dict) -> List[np.array]:
         # # number of submodels
         # N = n_i_knots * 4
         # N = max(28, N)
-        N = 40
-
+        N = 80
+        
         # where are our fixed outer points
+        if observed.all():
+            terminal_days = 4
+        else:
+            terminal_days = 1
         if observed.sum() < 100:
             #start_boundary_pctile = terminal_days / 100
             end_boundary_pctile = 1. - (terminal_days / 100)
@@ -173,7 +177,7 @@ class SplineFit:
             # flag if no fully unique knot options (i.e., entries w/ duplicates eliminated in previous step)
             if ensemble_knots.size == 0:
                 raise ValueError('Knot options do not find unique data values (frequency).')
-
+            
         return ensemble_knots
 
     def fit_model(self):

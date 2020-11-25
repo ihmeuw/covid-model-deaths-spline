@@ -14,6 +14,8 @@ import pandas as pd
 import yaml
 
 from covid_model_deaths_spline import cfr_model, smoother, summarize, plotter
+from covid_model_deaths_spline.utils import CDR_ULIM
+
 from mrtool import MRData, LinearCovModel, MRBRT
 from xspline import XSpline
 
@@ -200,8 +202,7 @@ def smooth_ifr(ifr_data: pd.DataFrame) -> np.array:
     
 def adjust_ifr(ifr: pd.Series,
                smooth_deaths: pd.Series, 
-               cases: pd.Series,
-               cdr_ulim: float = 0.7) -> pd.Series:
+               cases: pd.Series) -> pd.Series:
     '''
     All metrics taken in as daily.
     Cases and pseudo-deaths are indexed on date of deaths.
@@ -213,7 +214,7 @@ def adjust_ifr(ifr: pd.Series,
 
     cdr = ((1 / cfr) * ifr).rename('cdr')
 
-    ifr_adjustment = cdr_ulim / cdr
+    ifr_adjustment = CDR_ULIM / cdr
     bad_2weeks = (ifr_adjustment.dropna() < 1).sum() > 14
     ifr_adjustment.loc[ifr_adjustment > 1] = 1
     ifr_adjustment = ifr_adjustment.rename('ifr_adjustment')

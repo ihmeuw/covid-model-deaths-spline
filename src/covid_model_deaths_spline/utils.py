@@ -1,6 +1,8 @@
 import numpy as np
 
 KNOT_DAYS = 16
+DURATION = 12
+CDR_ULIM = 0.7
 FLOOR_DEATHS = 0.005
 
 

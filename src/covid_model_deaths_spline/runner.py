@@ -14,10 +14,9 @@ import functools
 import multiprocessing
 
 from covid_model_deaths_spline import data, models, pdf_merger, cluster, summarize, aggregate
+from covid_model_deaths_spline.utils import DURATION
 
 warnings.simplefilter('ignore')
-
-DURATION = 12
 
 PARENT_MODEL_LOCATIONS = [189]  # Tanzania
 
@@ -243,7 +242,7 @@ def make_deaths(app_metadata: cli_tools.Metadata,
         infections_dir=infections_dir,
         duration=DURATION + 11
     )
-    with multiprocessing.Pool(25) as p:
+    with multiprocessing.Pool(50) as p:
         draw_files = list(tqdm.tqdm(p.imap(_write_infections, list(range(n_draws))), total=n_draws, file=sys.stdout))
     logger.debug(f"Example infection draw file: {str(draw_files[0])}")
     ratios.to_csv(infections_dir / 'ratios.csv', index=False)

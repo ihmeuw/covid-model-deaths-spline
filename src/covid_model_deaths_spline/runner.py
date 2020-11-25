@@ -38,7 +38,7 @@ def make_deaths(app_metadata: cli_tools.Metadata,
     hierarchy = data.load_most_detailed_locations(input_root)
     agg_hierarchy = data.load_aggregate_locations(input_root)
     
-    ifr = data.load_ifr(ifr_root)
+    ifr, risk = data.load_ifr(ifr_root)
 
     full_data = data.load_full_data(input_root)
     full_data, manipulation_metadata = data.evil_doings(full_data)
@@ -219,7 +219,7 @@ def make_deaths(app_metadata: cli_tools.Metadata,
     smooth_draws.reset_index().to_csv(output_root / 'model_results_refit.csv', index=False)
     smooth_draws_nans.to_csv(output_root / 'model_results_refit_nans.csv', index=False)
     
-    logger.debug("Writing infection data (convert deaths to daily).")
+    logger.debug("Writing daily infection data (convert deaths to daily as well).")
     infections = infections.set_index(['location_id', 'date'])
     infections['observed_infections'] = model_data['Death rate'].notnull().astype(int)
     infections = infections.reset_index()
@@ -245,5 +245,20 @@ def make_deaths(app_metadata: cli_tools.Metadata,
     with multiprocessing.Pool(50) as p:
         draw_files = list(tqdm.tqdm(p.imap(_write_infections, list(range(n_draws))), total=n_draws, file=sys.stdout))
     logger.debug(f"Example infection draw file: {str(draw_files[0])}")
-    ratios.to_csv(infections_dir / 'ratios.csv', index=False)
+    ratios.to_csv(output_root / 'ratio_adjustment.csv', index=False)
+    
+    logger.debug("Writing IFR file.")
+    ratios = (ratios
+              .loc[:, ['location_id', 'date', 'adj_ifr']]
+              .set_index(['location_id', 'date'])
+              .rename(columns={'adj_ifr':'ifr'}))
+    risk = risk.set_index('location_id')
+    risk_adj_factor = ratios['ifr'] / risk['ifr']
+    risk_adj_factor = pd.concat([risk_adj_factor,
+                                 risk_adj_factor.rename('ifr_lr'),
+                                 risk_adj_factor.rename('ifr_hr')],
+                                axis=1)
+    risk = risk * risk_adj_factor
+    risk.sort_index().reset_index().to_csv(output_root / 'ifr.csv', index=False)
+    logger.debug(f"IFR file: {str(output_root / 'ifr.csv')}")
     

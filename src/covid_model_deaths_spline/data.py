@@ -250,13 +250,17 @@ def apply_parents(parent_model_locations: List[int], hierarchy: pd.DataFrame,
 
 def load_ifr(ifr_root: Path):
     ifr_path = ifr_root / 'allage_ifr_by_loctime.csv'
-    data = pd.read_csv(ifr_path)
-    data['Date'] = pd.to_datetime(data['datevar'])
-    data = data.rename(columns={'allage_ifr':'ifr'})
+    risk_path = ifr_root / 'terminal_ifr.csv'
     
+    ifr_data = pd.read_csv(ifr_path)
+    ifr_data['Date'] = pd.to_datetime(ifr_data['datevar'])
+    ifr_data = ifr_data.rename(columns={'allage_ifr':'ifr'})
     keep_columns = ['location_id', 'Date', 'ifr']
+    ifr_data = ifr_data.loc[:, keep_columns]
     
-    return data.loc[:, keep_columns]
+    risk_data = pd.read_csv(risk_path)
+    
+    return ifr_data, risk_data
 
 
 def write_infections(draw: int, smooth_draws: pd.DataFrame, infections: pd.DataFrame,

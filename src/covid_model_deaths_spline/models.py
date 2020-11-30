@@ -14,7 +14,7 @@ import pandas as pd
 import yaml
 
 from covid_model_deaths_spline import cfr_model, smoother, summarize, plotter
-from covid_model_deaths_spline.utils import CDR_ULIM
+from covid_model_deaths_spline.utils import DURATION, CDR_ULIM, BAD_CDR_DAYS_THRESHOLD
 
 from mrtool import MRData, LinearCovModel, MRBRT
 from xspline import XSpline
@@ -88,11 +88,53 @@ def model_iteration(location_id: int, model_data: pd.DataFrame, model_settings: 
     return DEATH_RESULTS(model_data, noisy_draws, smooth_draws)
 
 
-def smooth_ifr(ifr_data: pd.DataFrame) -> np.array:
-    ifr_data = ifr_data.sort_index().reset_index()
+def create_spline_instructions(ifr_data: pd.DataFrame) -> Tuple[float, np.array, np.array]:
+    # important dates on IFR curves
     breakpoint = ifr_data.loc[ifr_data['ifr'].diff() == 0, 'Date'].values[0]
     last_observed = ifr_data.loc[ifr_data['raw_adj_ifr'].notnull(), 'Date'].values[-1]
+
+    # must start 40 days in, then convert to time
+    start_adj = max(40, ifr_data.loc[ifr_data['ifr_adjustment'] < 1, 'time'].min())
+    breakpoint = (breakpoint - ifr_data['Date'].min()).days
+    last_observed = (last_observed - ifr_data['Date'].min()).days
+    end_adj = ifr_data.loc[ifr_data['ifr_adjustment'] < 1, 'time'].max()
+
+    # add one knot per 30 days between first and last adjustment date
+    k1 = min(start_adj, breakpoint)
+    k2 = max(last_observed, end_adj)
+    steps = int(np.round((k2 - k1) / 30))
+    ks = np.linspace(k1, k2, steps+1)
+    ks = np.round(ks).astype(int).tolist()
     
+    start_value = ifr_data['ifr'].values[0]
+    k1sub30_value = ifr_data['ifr'].values[k1 - 30]
+    k_values = ifr_data['ifr'].values[ks].tolist()
+    end_value = ifr_data['ifr'].values[-1]
+    
+    t_knots = np.array([0.,
+                        (k1 - 30) / ifr_data['time'].max()] +
+                       [k / ifr_data['time'].max() for k in ks] +
+                       [(k2 + 60) / ifr_data['time'].max(),
+                        1.])
+
+    dmat0 = XSpline(t_knots, 3, True, True).design_mat(ifr_data['time'])[0]
+    b0 = ((start_value - (k1sub30_value * dmat0[0])) / dmat0[1]) - k1sub30_value
+
+    prior_beta_uniform = np.array([[b0,
+                                    k_values[0]-k1sub30_value] +
+                                   [-np.inf] * (len(k_values) - 1) +
+                                   [end_value-k1sub30_value,
+                                    end_value-k1sub30_value],
+                                  [b0] +
+                                  [k_value - k1sub30_value for k_value in k_values] +
+                                  [end_value-k1sub30_value,
+                                   end_value-k1sub30_value]])
+
+    return k1sub30_value, t_knots, prior_beta_uniform
+
+
+def smooth_ifr(ifr_data: pd.DataFrame) -> np.array:
+    ifr_data = ifr_data.sort_index().reset_index()
     ifr_data['ifr'] = np.log(ifr_data['ifr'])
     ifr_data['raw_adj_ifr'] = np.log(ifr_data['raw_adj_ifr'])
     
@@ -103,48 +145,8 @@ def smooth_ifr(ifr_data: pd.DataFrame) -> np.array:
     ifr_data['study_id'] = 1
     ifr_data['intercept'] = 1
     
-    start_adj = max(60, ifr_data.loc[(ifr_data['Date'] > pd.to_datetime('2020-05-01')) & 
-                                     (ifr_data['ifr_adjustment'] < 1), 'time'].min())
-    breakpoint = (breakpoint - ifr_data['Date'].min()).days
-    last_observed = (last_observed - ifr_data['Date'].min()).days
-    end_adj = ifr_data.loc[ifr_data['ifr_adjustment'] < 1, 'time'].max()
+    ik_value, t_knots, prior_beta_uniform = create_spline_instructions(ifr_data)
     
-    k1 = min(start_adj, breakpoint)
-    k2 = max(last_observed, end_adj)
-    k_t1 = int(k1 + ((k2 - k1) / 3))
-    k_t2 = int(k1 + 2*((k2 - k1) / 3))
-    start_value = ifr_data['ifr'].values[0]
-    k1sub30_value = ifr_data['ifr'].values[k1 - 30]
-    k1_value = ifr_data['ifr'].values[k1]
-    k_t1_value = ifr_data['ifr'].values[k_t1]
-    k_t2_value = ifr_data['ifr'].values[k_t2]
-    k2_value = ifr_data['ifr'].values[k2]
-    end_value = ifr_data['ifr'].values[-1]
-    t_knots = np.array([0.,
-                        (k1 - 30) / ifr_data['time'].max(),
-                        k1 / ifr_data['time'].max(),
-                        k_t1 / ifr_data['time'].max(),
-                        k_t2 / ifr_data['time'].max(),
-                        k2 / ifr_data['time'].max(),
-                        (k2 + 60) / ifr_data['time'].max(),
-                        1.])
-    dmat0 = XSpline(t_knots, 3, True, True).design_mat(ifr_data['time'])[0]
-    b0 = ((start_value - (k1sub30_value * dmat0[0])) / dmat0[1]) - k1sub30_value
-    prior_beta_uniform = np.array([[b0,
-                                    k1_value-k1sub30_value,
-                                    -np.inf,
-                                    -np.inf,
-                                    -np.inf,
-                                    end_value-k1sub30_value,
-                                    end_value-k1sub30_value],
-                                  [b0,
-                                   k1_value-k1sub30_value,
-                                   k_t1-k1sub30_value,
-                                   k_t2-k1sub30_value,
-                                   k2_value-k1sub30_value,
-                                   end_value-k1sub30_value,
-                                   end_value-k1sub30_value]])
-        
     mr_data = MRData(
         df=ifr_data,
         col_obs='ifr_to_model',
@@ -156,7 +158,7 @@ def smooth_ifr(ifr_data: pd.DataFrame) -> np.array:
     intercept = LinearCovModel(
         alt_cov='intercept',
         use_re=True,
-        prior_beta_uniform=np.array([k1sub30_value, k1sub30_value]),
+        prior_beta_uniform=np.array([ik_value, ik_value]),
         prior_gamma_uniform=np.array([0., 0.]),
         name='intercept'
     )
@@ -174,8 +176,7 @@ def smooth_ifr(ifr_data: pd.DataFrame) -> np.array:
         name='time'
     )
     mr_model = MRBRT(data=mr_data,
-                     cov_models=[intercept, spline_model],
-                     inlier_pct=0.99)
+                     cov_models=[intercept, spline_model])
     mr_model.fit_model()
     
     
@@ -207,7 +208,6 @@ def adjust_ifr(ifr: pd.Series,
     All metrics taken in as daily.
     Cases and pseudo-deaths are indexed on date of deaths.
     Assumes IFR is indexed on date of deaths.
-    Only adjusts if > 2 weeks of bad CFRs.
     '''
     cfr = (smooth_deaths / cases).rename('cfr')
     cfr.loc[cfr <= 0] = np.nan
@@ -215,16 +215,19 @@ def adjust_ifr(ifr: pd.Series,
     cdr = ((1 / cfr) * ifr).rename('cdr')
 
     ifr_adjustment = CDR_ULIM / cdr
-    bad_2weeks = (ifr_adjustment.dropna() < 1).sum() > 14
     ifr_adjustment.loc[ifr_adjustment > 1] = 1
     ifr_adjustment = ifr_adjustment.rename('ifr_adjustment')
+    
+    # adjust if we have enough days over threshold, or if we have any problems at tail
+    over_threshold = ifr_adjustment.dropna() < 1
+    meets_threshold = over_threshold.iloc[-DURATION:].any() or over_threshold.sum() > BAD_CDR_DAYS_THRESHOLD
     
     adj_ifr = pd.concat([ifr, ifr_adjustment], axis=1)
     past = adj_ifr['ifr_adjustment'].fillna(method='bfill').notnull()
     missing_adj = adj_ifr['ifr_adjustment'].isnull()
     adj_ifr.loc[past & missing_adj, 'ifr_adjustment'] = 1
     adj_ifr['raw_adj_ifr'] = adj_ifr['ifr'] * adj_ifr['ifr_adjustment']
-    if bad_2weeks:
+    if meets_threshold:
         adj_ifr['adj_ifr'] = smooth_ifr(adj_ifr)
         adj_ifr.loc[adj_ifr['adj_ifr'] > adj_ifr['ifr'], 'adj_ifr'] = adj_ifr['ifr']
     else:

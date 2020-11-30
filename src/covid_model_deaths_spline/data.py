@@ -263,21 +263,30 @@ def load_ifr(ifr_root: Path):
     return ifr_data, risk_data
 
 
-def write_infections(draw: int, smooth_draws: pd.DataFrame, infections: pd.DataFrame,
-                     md_locs: List[int], infections_dir: Path, duration: int):
-    inf_death_data = pd.concat([
-        (smooth_draws
-         .rename(columns={f'draw_{draw}':'deaths_draw'})
-         .loc[:, ['deaths_draw', 'observed_deaths']]),
-        (infections
-         .rename(columns={f'draw_{draw}':'infections_draw'})
-         .loc[:, ['infections_draw', 'observed_infections']])
+def write_infections(death_inf_data: Tuple[pd.DataFrame, pd.DataFrame],
+                     md_locs: List[int],
+                     infections_dir: Path, duration: int):
+    draw_cols = [c for c in death_inf_data[0].columns if c.startswith('draw')]
+    if len(draw_cols) == 0:
+        raise ValueError('No draw columns present.')
+    elif len(draw_cols) > 1:
+        raise ValueError('Multiple draw columns present.')
+    draw_col = draw_cols[0]
+    draw = int(draw_col.replace('draw_', ''))
+    
+    death_inf_data = pd.concat([
+        (death_inf_data[0]
+         .loc[:, [draw_col, 'observed_deaths']]
+         .rename(columns={draw_col:'deaths_draw'})),
+        (death_inf_data[1]
+         .loc[:, [draw_col, 'observed_infections']]
+         .rename(columns={draw_col:'infections_draw'}))
     ], axis=1)
-    inf_death_data['draw'] = draw
-    inf_death_data['duration'] = duration
-    inf_death_data = inf_death_data.reset_index()
-    most_detailed = inf_death_data['location_id'].isin(md_locs)
-    inf_death_data = inf_death_data.loc[most_detailed]
-    inf_death_data.to_csv(infections_dir / f'draw_{draw}.csv', index=False)
+    death_inf_data['draw'] = draw
+    death_inf_data['duration'] = duration
+    death_inf_data = death_inf_data.reset_index()
+    most_detailed = death_inf_data['location_id'].isin(md_locs)
+    death_inf_data = death_inf_data.loc[most_detailed]
+    death_inf_data.to_csv(infections_dir / f'draw_{draw}.csv', index=False)
     
     return infections_dir / f'draw_{draw}.csv'

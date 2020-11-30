@@ -224,26 +224,28 @@ def make_deaths(app_metadata: cli_tools.Metadata,
     infections['observed_infections'] = model_data['Death rate'].notnull().astype(int)
     infections = infections.reset_index()
     infections['date'] = infections['date'] - pd.Timedelta(days=DURATION + 11)
-    infections = infections.set_index(['location_id', 'date'])
-    draw_cols = [f'draw_{d}' for d in range(n_draws)]
+    infections = infections.set_index(['location_id', 'date']).sort_index()
     smooth_draws = (smooth_draws
                     .sort_index()
                     .reset_index()
                     .groupby('location_id')
-                    .apply(lambda x: pd.DataFrame(np.diff(x[draw_cols], axis=0, prepend=0),
+                    .apply(lambda x: pd.DataFrame(np.diff(x[[f'draw_{d}' for d in range(n_draws)]], axis=0, prepend=0),
                                                   index=x['date'],
-                                                  columns=draw_cols)))
+                                                  columns=[f'draw_{d}' for d in range(n_draws)])))
     smooth_draws['observed_deaths'] = model_data['Death rate'].notnull().astype(int)
+    death_inf_data_list = [
+        (smooth_draws.loc[:, [f'draw_{draw}', 'observed_deaths']],
+         infections.loc[:, [f'draw_{draw}', 'observed_infections']]) for draw in range(n_draws)
+    ]
     _write_infections = functools.partial(
         data.write_infections,
-        smooth_draws=smooth_draws.copy(),
-        infections=infections.copy(),
         md_locs=hierarchy['location_id'].to_list(),
         infections_dir=infections_dir,
         duration=DURATION + 11
     )
     with multiprocessing.Pool(50) as p:
-        draw_files = list(tqdm.tqdm(p.imap(_write_infections, list(range(n_draws))), total=n_draws, file=sys.stdout))
+        draw_files = list(tqdm.tqdm(p.imap(_write_infections, death_inf_data_list),
+                                    total=n_draws, file=sys.stdout))
     logger.debug(f"Example infection draw file: {str(draw_files[0])}")
     ratios.to_csv(output_root / 'ratio_adjustment.csv', index=False)
     

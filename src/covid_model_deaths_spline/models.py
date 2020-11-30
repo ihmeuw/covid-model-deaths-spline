@@ -102,7 +102,7 @@ def create_spline_instructions(ifr_data: pd.DataFrame) -> Tuple[float, np.array,
     # add one knot per 30 days between first and last adjustment date
     k1 = min(start_adj, breakpoint)
     k2 = max(last_observed, end_adj)
-    steps = int(np.round((k2 - k1) / 30))
+    steps = max(1, int(np.round((k2 - k1) / 30)))
     ks = np.linspace(k1, k2, steps+1)
     ks = np.round(ks).astype(int).tolist()
     

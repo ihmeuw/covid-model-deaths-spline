@@ -285,6 +285,14 @@ def infection_plots(infections: pd.DataFrame, model_data: pd.DataFrame,
            .set_index(['date'])
            .sort_index()
            .loc[:, 'cfr'])
+    
+    roll_window = 3
+    idr = ((ifr / cfr)
+           .rolling(window=roll_window, min_periods=roll_window, center=True).mean()
+           .rename('idr'))
+    adj_idr = ((daily_cases / daily_infections)
+               .rolling(window=roll_window, min_periods=roll_window, center=True).mean()
+               .rename('adj_idr'))
 
     sns.set_style('whitegrid')
     fig, ax = plt.subplots(2, 2, figsize=(12, 8))
@@ -308,14 +316,18 @@ def infection_plots(infections: pd.DataFrame, model_data: pd.DataFrame,
     ax[1, 0].set_ylabel('Infection-fatality ratio')
     ax[1, 0].tick_params('x', labelrotation=60)
 
-    ax[1, 1].plot((daily_cases / daily_infections).rolling(window=7, min_periods=7, center=True).mean(), 
-                  color='darkorchid')
-    ax[1, 1].set_ylabel('Infection-detection rate (7-day average)')
+    ax[1, 1].plot(idr, linestyle='--', color='darkorchid', label='IDR')
+    ax[1, 1].plot(adj_idr, color='darkorchid', label='IDR (adjusted + smoothed)')
+    ax[1, 1].set_ylabel(f'Infection-detection rate ({roll_window}-day average)')
+    axis_buffer = adj_idr.dropna().values.ptp() * 0.05
+    ax[1, 1].set_ylim(adj_idr.min() - axis_buffer,
+                      adj_idr.max() + axis_buffer)
     ax[1, 1].tick_params('x', labelrotation=60)
 
     ax[0, 0].legend(loc=2)
     ax[0, 1].legend(loc=2)
     ax[1, 0].legend(loc=1)
+    ax[1, 1].legend(loc=2)
     
     fig.suptitle(f'{location_name} [{location_id}]', y=1.0025)
     fig.tight_layout()
@@ -324,4 +336,3 @@ def infection_plots(infections: pd.DataFrame, model_data: pd.DataFrame,
         plt.close(fig)
     else:
         plt.show()
-

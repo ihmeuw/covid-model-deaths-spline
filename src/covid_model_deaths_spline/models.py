@@ -88,50 +88,60 @@ def model_iteration(location_id: int, model_data: pd.DataFrame, model_settings: 
     return DEATH_RESULTS(model_data, noisy_draws, smooth_draws)
 
 
-def create_spline_instructions(ifr_data: pd.DataFrame) -> Tuple[float, np.array, np.array]:
+def create_spline_instructions(ifr_data: pd.DataFrame,
+                               int_width: int = 10,
+                               buffer_width: int = 30) -> Tuple[float, np.array, np.array, bool]:
     # important dates on IFR curves
     breakpoint = ifr_data.loc[ifr_data['ifr'].diff() == 0, 'Date'].values[0]
-    #last_observed = ifr_data.loc[ifr_data['raw_adj_ifr'].notnull(), 'Date'].values[-1]
+    last_observed = ifr_data.loc[ifr_data['raw_adj_ifr'].notnull(), 'Date'].values[-1]
 
-    # must start 35 days in, then convert to time
-    start_adj = max(35, ifr_data.loc[ifr_data['ifr_adjustment'] < 1, 'time'].min())
+    # must start at least buffer_width + 5 days in; convert to time
+    start_adj = ifr_data.loc[ifr_data['ifr_adjustment'] < 1, 'time'].min()
+    start_adj -= int_width
+    start_adj = max(buffer_width + 5, start_adj)
     breakpoint = (breakpoint - ifr_data['Date'].min()).days
-    #last_observed = (last_observed - ifr_data['Date'].min()).days
+    last_observed = (last_observed - ifr_data['Date'].min()).days
     end_adj = ifr_data.loc[ifr_data['ifr_adjustment'] < 1, 'time'].max()
+    end_adj += int_width
+    
+    # flag if we are adjusting at the end of the time period
+    tail = ifr_data.loc[ifr_data['time'].between(last_observed - 5, last_observed, inclusive=True)]
+    tail_adj_count = (tail['ifr_adjustment'] < 1).sum()
+    tail_adj_flag = tail_adj_count > 1
 
     # add one knot per 30 days between first and last adjustment date
     # (or IFR breakpoint if first adjustment date is after that / last adjustment date is before that)
     k1 = min(start_adj, breakpoint)
-    k2 = max(breakpoint, end_adj)  # max(last_observed, end_adj)
-    steps = max(1, int(np.round((k2 - k1) / 30)))
+    k2 = max(breakpoint, end_adj)
+    steps = max(1, int(np.round((k2 - k1) / int_width)))
     ks = np.linspace(k1, k2, steps+1)
     ks = np.round(ks).astype(int).tolist()
     
     start_value = ifr_data['ifr'].values[0]
-    k1sub30_value = ifr_data['ifr'].values[k1 - 30]
+    k1sub_value = ifr_data['ifr'].values[k1 - buffer_width]
     k_values = ifr_data['ifr'].values[ks].tolist()
     end_value = ifr_data['ifr'].values[-1]
     
     t_knots = np.array([0.,
-                        (k1 - 30) / ifr_data['time'].max()] +
+                        (k1 - buffer_width) / ifr_data['time'].max()] +
                        [k / ifr_data['time'].max() for k in ks] +
-                       [(k2 + 30) / ifr_data['time'].max(),
+                       [(k2 + buffer_width) / ifr_data['time'].max(),
                         1.])
 
     dmat0 = XSpline(t_knots, 3, True, True).design_mat(ifr_data['time'])[0]
-    b0 = ((start_value - (k1sub30_value * dmat0[0])) / dmat0[1]) - k1sub30_value
+    b0 = ((start_value - (k1sub_value * dmat0[0])) / dmat0[1]) - k1sub_value
 
     prior_beta_uniform = np.array([[b0,
-                                    k_values[0]-k1sub30_value] +
+                                    k_values[0]-k1sub_value] +
                                    [-np.inf] * (len(k_values) - 1) +
-                                   [end_value-k1sub30_value,
-                                    end_value-k1sub30_value],
+                                   [end_value-k1sub_value,
+                                    end_value-k1sub_value],
                                   [b0] +
-                                  [k_value - k1sub30_value for k_value in k_values] +
-                                  [end_value-k1sub30_value,
-                                   end_value-k1sub30_value]])
+                                  [k_value - k1sub_value for k_value in k_values] +
+                                  [end_value-k1sub_value,
+                                   end_value-k1sub_value]])
 
-    return k1sub30_value, t_knots, prior_beta_uniform
+    return k1sub_value, t_knots, prior_beta_uniform, tail_adj_flag
 
 
 def smooth_ifr(ifr_data: pd.DataFrame) -> np.array:
@@ -146,16 +156,22 @@ def smooth_ifr(ifr_data: pd.DataFrame) -> np.array:
     ifr_data['study_id'] = 1
     ifr_data['intercept'] = 1
     
-    ik_value, t_knots, prior_beta_uniform = create_spline_instructions(ifr_data)
+    ik_value, t_knots, prior_beta_uniform, tail_adj_flag = create_spline_instructions(ifr_data)
     
-    # # TODO: drop data in second window if it is at tail (Finland issue)
-    # t_k_values = (t_knots * ifr_data['time'].max()).astype(int)
-    # ...
-    # window = ifr_data['time'].between(t1, t2, inclusive=False)
-    # ifr_data = ifr_data.loc[~window]
+    # drop data in post-adjustment window if adjustment is at tail (Finland issue)
+    t_k_values = (t_knots * ifr_data['time'].max()).astype(int)
+    knot_days = ifr_data.loc[t_k_values.astype(int).tolist(), 'Date'].to_list()
+    if tail_adj_flag:
+        logger.info('Eliminating post-adjustment IFR data from adj_ifr fit.')
+        t1 = t_k_values[-4]
+        t2 = t_k_values[-2]
+        window = ifr_data['time'].between(t1, t2, inclusive=False)
+        ifr_data_to_model = ifr_data.loc[~window]
+    else:
+        ifr_data_to_model = ifr_data.copy()
     
     mr_data = MRData(
-        df=ifr_data,
+        df=ifr_data_to_model,
         col_obs='ifr_to_model',
         col_obs_se='obs_se',
         col_covs=['intercept', 'time'],
@@ -186,7 +202,6 @@ def smooth_ifr(ifr_data: pd.DataFrame) -> np.array:
                      cov_models=[intercept, spline_model])
     mr_model.fit_model()
     
-    
     spline_model = mr_model.linear_cov_models[1]
     spline_model = spline_model.create_spline(mr_model.data)
     coefs = np.hstack([mr_model.beta_soln[0], mr_model.beta_soln[0] + mr_model.beta_soln[1:]])
@@ -205,7 +220,7 @@ def smooth_ifr(ifr_data: pd.DataFrame) -> np.array:
     # plt.xticks(rotation=60)
     # plt.show()
     
-    return smooth_adj_ifr
+    return smooth_adj_ifr, knot_days
     
     
 def adjust_ifr(ifr: pd.Series,
@@ -235,12 +250,13 @@ def adjust_ifr(ifr: pd.Series,
     adj_ifr.loc[past & missing_adj, 'ifr_adjustment'] = 1
     adj_ifr['raw_adj_ifr'] = adj_ifr['ifr'] * adj_ifr['ifr_adjustment']
     if meets_threshold:
-        adj_ifr['adj_ifr'] = smooth_ifr(adj_ifr)
+        adj_ifr['adj_ifr'], knot_days = smooth_ifr(adj_ifr)
         adj_ifr.loc[adj_ifr['adj_ifr'] > adj_ifr['ifr'], 'adj_ifr'] = adj_ifr['ifr']
     else:
         adj_ifr['adj_ifr'] = adj_ifr['ifr']
+        knot_days = []
     
-    return cfr.dropna(), adj_ifr['raw_adj_ifr'].dropna(), adj_ifr['adj_ifr'].dropna()
+    return cfr.dropna(), adj_ifr['raw_adj_ifr'].dropna(), adj_ifr['adj_ifr'].dropna(), knot_days
 
 
 def get_infections(data: pd.DataFrame, ifr: pd.Series, draw_cols: List[str]) -> pd.DataFrame:
@@ -360,29 +376,24 @@ def run_models(location_id: int,
     # convert to infections (adjust and apply IFR in daily space)
     if is_most_detailed:
         draw_cols = [f'draw_{d}' for d in range(np.sum(iteration_n_draws))]
-        cfr, raw_adj_ifr, adj_ifr = adjust_ifr(ifr=ifr.copy(),
-                                               smooth_deaths=(smooth_draws
-                                                              .set_index(['location_id', 'Date'])
-                                                              .sort_index()
-                                                              .loc[:, draw_cols]
-                                                              .mean(axis=1)
-                                                              .rename('smooth_deaths')
-                                                              .diff()
-                                                              .dropna()),
-                                               # pseudo_deaths=(model_data
-                                               #              .set_index(['location_id', 'Date'])
-                                               #              .sort_index()
-                                               #              .loc[:, 'Predicted death rate (CFR)']
-                                               #              .rename('pseudo_deaths')
-                                               #              .diff()
-                                               #              .dropna()),
-                                               cases=(model_data
-                                                      .set_index(['location_id', 'Date'])
-                                                      .sort_index()
-                                                      .loc[:, 'Confirmed case rate']
-                                                      .rename('cases')
-                                                      .diff()
-                                                      .dropna()))
+        cfr, raw_adj_ifr, adj_ifr, knot_days = adjust_ifr(
+            ifr=ifr.copy(),
+            smooth_deaths=(smooth_draws
+                          .set_index(['location_id', 'Date'])
+                          .sort_index()
+                          .loc[:, draw_cols]
+                          .mean(axis=1)
+                          .rename('smooth_deaths')
+                          .diff()
+                          .dropna()),
+            cases=(model_data
+                  .set_index(['location_id', 'Date'])
+                  .sort_index()
+                  .loc[:, 'Confirmed case rate']
+                  .rename('cases')
+                  .diff()
+                  .dropna())
+        )
         infections = get_infections(smooth_draws.copy(), adj_ifr, draw_cols)
         infections = infections.rename(index=str, columns={'Date':'date'})
         ratios = pd.concat([ifr, raw_adj_ifr, adj_ifr, cfr], axis=1).reset_index()
@@ -391,6 +402,7 @@ def run_models(location_id: int,
                                 model_data.copy(),
                                 ratios.copy(),
                                 draw_cols,
+                                knot_days,
                                 f'{plot_dir}/{location_id}_infections.pdf')
         infections[draw_cols] = infections[draw_cols] * model_data['population'][0]
         infections[draw_cols] = np.diff(infections[draw_cols], prepend=0, axis=0)

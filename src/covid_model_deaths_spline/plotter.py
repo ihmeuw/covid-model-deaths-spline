@@ -226,7 +226,8 @@ def plotter(df: pd.DataFrame, plot_vars: List[str], draw_df: pd.DataFrame,
 
         
 def infection_plots(infections: pd.DataFrame, model_data: pd.DataFrame, 
-                    ratios: pd.DataFrame, draw_cols: List[str], plot_file: str = None):
+                    ratios: pd.DataFrame, draw_cols: List[str], knot_days: List[pd.Timestamp],
+                    plot_file: str = None):
     population = model_data['population'][0]
     location_name = model_data['location_name'][0]
     location_id = model_data['location_id'][0]
@@ -313,6 +314,8 @@ def infection_plots(infections: pd.DataFrame, model_data: pd.DataFrame,
     ax[1, 0].plot(ifr, color='indianred', label='IFR')
     ax[1, 0].plot(raw_adj_ifr, linestyle='--', color='dodgerblue', label='IFR (adjusted)', alpha=0.5)
     ax[1, 0].plot(adj_ifr, color='dodgerblue', label='IFR (adjusted + smoothed)')
+    # for knot_day in knot_days:
+    #     ax[1, 0].axvline(knot_day, color='grey', linestyle='--', alpha=0.5)
     ax[1, 0].set_ylabel('Infection-fatality ratio')
     ax[1, 0].tick_params('x', labelrotation=60)
 

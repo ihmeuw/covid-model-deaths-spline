@@ -286,7 +286,7 @@ def infection_plots(infections: pd.DataFrame, model_data: pd.DataFrame,
            .sort_index()
            .loc[:, 'cfr'])
     
-    roll_window = 3
+    roll_window = 7
     idr = ((ifr / cfr)
            .rolling(window=roll_window, min_periods=roll_window, center=True).mean()
            .rename('idr'))
@@ -316,7 +316,7 @@ def infection_plots(infections: pd.DataFrame, model_data: pd.DataFrame,
     ax[1, 0].set_ylabel('Infection-fatality ratio')
     ax[1, 0].tick_params('x', labelrotation=60)
 
-    ax[1, 1].plot(idr, linestyle='--', color='darkorchid', label='IDR')
+    ax[1, 1].plot(idr, linestyle='--', color='darkorchid', label='IDR', alpha=0.5)
     ax[1, 1].plot(adj_idr, color='darkorchid', label='IDR (adjusted + smoothed)')
     ax[1, 1].set_ylabel(f'Infection-detection rate ({roll_window}-day average)')
     axis_buffer = adj_idr.dropna().values.ptp() * 0.05

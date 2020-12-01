@@ -93,8 +93,8 @@ def create_spline_instructions(ifr_data: pd.DataFrame) -> Tuple[float, np.array,
     breakpoint = ifr_data.loc[ifr_data['ifr'].diff() == 0, 'Date'].values[0]
     last_observed = ifr_data.loc[ifr_data['raw_adj_ifr'].notnull(), 'Date'].values[-1]
 
-    # must start 40 days in, then convert to time
-    start_adj = max(40, ifr_data.loc[ifr_data['ifr_adjustment'] < 1, 'time'].min())
+    # must start 35 days in, then convert to time
+    start_adj = max(35, ifr_data.loc[ifr_data['ifr_adjustment'] < 1, 'time'].min())
     breakpoint = (breakpoint - ifr_data['Date'].min()).days
     last_observed = (last_observed - ifr_data['Date'].min()).days
     end_adj = ifr_data.loc[ifr_data['ifr_adjustment'] < 1, 'time'].max()
@@ -114,7 +114,7 @@ def create_spline_instructions(ifr_data: pd.DataFrame) -> Tuple[float, np.array,
     t_knots = np.array([0.,
                         (k1 - 30) / ifr_data['time'].max()] +
                        [k / ifr_data['time'].max() for k in ks] +
-                       [(k2 + 60) / ifr_data['time'].max(),
+                       [(k2 + 30) / ifr_data['time'].max(),
                         1.])
 
     dmat0 = XSpline(t_knots, 3, True, True).design_mat(ifr_data['time'])[0]

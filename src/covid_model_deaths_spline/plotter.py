@@ -308,9 +308,9 @@ def infection_plots(infections: pd.DataFrame, model_data: pd.DataFrame,
     ax[1, 0].set_ylabel('Infection-fatality ratio')
     ax[1, 0].tick_params('x', labelrotation=60)
 
-    ax[1, 1].plot(daily_cases / daily_infections, 
+    ax[1, 1].plot((daily_cases / daily_infections).rolling(window=7, min_periods=7, center=True).mean(), 
                   color='darkorchid')
-    ax[1, 1].set_ylabel('Infection-detection rate')
+    ax[1, 1].set_ylabel('Infection-detection rate (7-day average)')
     ax[1, 1].tick_params('x', labelrotation=60)
 
     ax[0, 0].legend(loc=2)

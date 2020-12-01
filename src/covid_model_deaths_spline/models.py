@@ -91,17 +91,18 @@ def model_iteration(location_id: int, model_data: pd.DataFrame, model_settings: 
 def create_spline_instructions(ifr_data: pd.DataFrame) -> Tuple[float, np.array, np.array]:
     # important dates on IFR curves
     breakpoint = ifr_data.loc[ifr_data['ifr'].diff() == 0, 'Date'].values[0]
-    last_observed = ifr_data.loc[ifr_data['raw_adj_ifr'].notnull(), 'Date'].values[-1]
+    #last_observed = ifr_data.loc[ifr_data['raw_adj_ifr'].notnull(), 'Date'].values[-1]
 
     # must start 35 days in, then convert to time
     start_adj = max(35, ifr_data.loc[ifr_data['ifr_adjustment'] < 1, 'time'].min())
     breakpoint = (breakpoint - ifr_data['Date'].min()).days
-    last_observed = (last_observed - ifr_data['Date'].min()).days
+    #last_observed = (last_observed - ifr_data['Date'].min()).days
     end_adj = ifr_data.loc[ifr_data['ifr_adjustment'] < 1, 'time'].max()
 
     # add one knot per 30 days between first and last adjustment date
+    # (or IFR breakpoint if first adjustment date is after that / last adjustment date is before that)
     k1 = min(start_adj, breakpoint)
-    k2 = max(last_observed, end_adj)
+    k2 = max(breakpoint, end_adj)  # max(last_observed, end_adj)
     steps = max(1, int(np.round((k2 - k1) / 30)))
     ks = np.linspace(k1, k2, steps+1)
     ks = np.round(ks).astype(int).tolist()
@@ -146,6 +147,12 @@ def smooth_ifr(ifr_data: pd.DataFrame) -> np.array:
     ifr_data['intercept'] = 1
     
     ik_value, t_knots, prior_beta_uniform = create_spline_instructions(ifr_data)
+    
+    # # TODO: drop data in second window if it is at tail (Finland issue)
+    # t_k_values = (t_knots * ifr_data['time'].max()).astype(int)
+    # ...
+    # window = ifr_data['time'].between(t1, t2, inclusive=False)
+    # ifr_data = ifr_data.loc[~window]
     
     mr_data = MRData(
         df=ifr_data,

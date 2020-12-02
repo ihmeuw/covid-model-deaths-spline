@@ -185,7 +185,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     logger.debug('Extracting inputs for smoother model.')
     # extract inputs
     df = df.sort_values('Date').reset_index(drop=True)
-    pre_month_0s = df.loc[df['Death rate'] == 0][:-30].index
+    pre_month_0s = df.loc[df[[obs_var] + pred_vars].sum(axis=1) == 0][:-30].index
     df = df.drop(pre_month_0s).reset_index(drop=True)
     total_deaths = (df['Death rate'] * df['population']).max()
     floor = FLOOR_DEATHS / df['population'][0]

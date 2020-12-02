@@ -44,9 +44,19 @@ def make_deaths(app_metadata: cli_tools.Metadata,
     full_data, manipulation_metadata = data.evil_doings(full_data)
     app_metadata.update({'data_manipulation': manipulation_metadata})
 
-    case_data = data.get_shifted_data(full_data, 'Confirmed', 'Confirmed case rate', DURATION)
-    hosp_data = data.get_shifted_data(full_data, 'Hospitalizations', 'Hospitalization rate', DURATION)
     death_data = data.get_death_data(full_data)
+    max_death_date = (death_data
+                      .groupby('location_id')['Date'].max()
+                      .rename('max_death_date')
+                      .reset_index())
+    case_data = data.get_shifted_data(full_data, 'Confirmed', 'Confirmed case rate', DURATION)
+    case_data = case_data.merge(max_death_date)
+    case_data = case_data.loc[case_data['True date'] <= case_data['max_death_date']]
+    del case_data['max_death_date']
+    hosp_data = data.get_shifted_data(full_data, 'Hospitalizations', 'Hospitalization rate', DURATION)
+    hosp_data = hosp_data.merge(max_death_date)
+    hosp_data = hosp_data.loc[hosp_data['True date'] <= hosp_data['max_death_date']]
+    del hosp_data['max_death_date']
     pop_data = data.get_population_data(input_root, hierarchy)
 
     logger.debug(f"Dropping {holdout_days} days from the end of the data.")

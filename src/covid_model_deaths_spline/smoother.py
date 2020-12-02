@@ -185,6 +185,8 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     logger.debug('Extracting inputs for smoother model.')
     # extract inputs
     df = df.sort_values('Date').reset_index(drop=True)
+    pre_month_0s = df.loc[df['Death rate'] == 0][:-80].index
+    df = df.drop(pre_month_0s)
     total_deaths = (df['Death rate'] * df['population']).max()
     floor = FLOOR_DEATHS / df['population'][0]
     keep_idx = ~df[[obs_var] + pred_vars].isnull().all(axis=1)
@@ -298,10 +300,8 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
 
     # make pretty (in linear cumulative space)
     logger.debug('Cleaning up draws.')
-    noisy_draws = draw_cleanup(noisy_draws,
-                               x_pred, df)
-    smooth_draws = draw_cleanup(smooth_draws,
-                                x_pred, df)
+    noisy_draws = draw_cleanup(noisy_draws, x_pred, df)
+    smooth_draws = draw_cleanup(smooth_draws, x_pred, df)
 
     # get best knots and betas
     logger.debug('Locating best settings.')

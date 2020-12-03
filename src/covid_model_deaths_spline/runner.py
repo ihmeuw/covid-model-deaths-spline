@@ -32,9 +32,20 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     full_data, manipulation_metadata = data.evil_doings(full_data)
     app_metadata.update({'data_manipulation': manipulation_metadata})
 
-    case_data = data.get_shifted_data(full_data, 'Confirmed', 'Confirmed case rate')
-    hosp_data = data.get_shifted_data(full_data, 'Hospitalizations', 'Hospitalization rate')
     death_data = data.get_death_data(full_data)
+    max_death_date = (death_data
+                      .groupby('location_id')['Date'].max()
+                      .rename('max_death_date')
+                      .reset_index())
+    case_data = data.get_shifted_data(full_data, 'Confirmed', 'Confirmed case rate')
+    case_data = case_data.merge(max_death_date)
+    case_data = case_data.loc[case_data['True date'] <= case_data['max_death_date']]
+    del case_data['max_death_date']
+    hosp_data = data.get_shifted_data(full_data, 'Hospitalizations', 'Hospitalization rate')
+    hosp_data = hosp_data.merge(max_death_date)
+    hosp_data = hosp_data.loc[hosp_data['True date'] <= hosp_data['max_death_date']]
+    del hosp_data['max_death_date']
+    del max_death_date
     pop_data = data.get_population_data(input_root, hierarchy)
 
     logger.debug(f"Dropping {holdout_days} days from the end of the data.")
@@ -51,6 +62,8 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     logger.debug("Combine datasets.")
     model_data = data.combine_data(case_data, hosp_data, death_data, pop_data, hierarchy)
     model_data = model_data.sort_values(['location_id', 'Date']).reset_index(drop=True)
+    model_data = data.drop_leading_zeros(model_data,
+                                         ['Death rate', 'Confirmed case rate', 'Hospitalization rate'])
 
     logger.debug("Create aggregates for modeling.")
     agg_locations = [aggregate.Location(lid, lname) for lid, lname in

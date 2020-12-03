@@ -57,6 +57,7 @@ def make_deaths(app_metadata: cli_tools.Metadata,
     hosp_data = hosp_data.merge(max_death_date)
     hosp_data = hosp_data.loc[hosp_data['True date'] <= hosp_data['max_death_date']]
     del hosp_data['max_death_date']
+    del max_death_date
     pop_data = data.get_population_data(input_root, hierarchy)
 
     logger.debug(f"Dropping {holdout_days} days from the end of the data.")
@@ -73,6 +74,7 @@ def make_deaths(app_metadata: cli_tools.Metadata,
     logger.debug("Combine datasets.")
     model_data = data.combine_data(case_data, hosp_data, death_data, pop_data, hierarchy)
     model_data = model_data.sort_values(['location_id', 'Date']).reset_index(drop=True)
+    model_data = data.drop_leading_zeros(model_data)
 
     logger.debug("Create aggregates for modeling.")
     agg_locations = [aggregate.Location(lid, lname) for lid, lname in

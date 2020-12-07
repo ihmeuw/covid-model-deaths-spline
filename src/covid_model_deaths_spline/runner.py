@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 import warnings
 
@@ -5,28 +6,39 @@ from covid_shared import shell_tools, cli_tools
 import dill as pickle
 from loguru import logger
 import pandas as pd
+import numpy as np
 import yaml
 
+import tqdm
+import functools
+import multiprocessing
+
 from covid_model_deaths_spline import data, models, pdf_merger, cluster, summarize, aggregate
+from covid_model_deaths_spline.utils import DURATION
 
 warnings.simplefilter('ignore')
 
 PARENT_MODEL_LOCATIONS = [189]  # Tanzania
 
 
-def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root: Path,
+def make_deaths(app_metadata: cli_tools.Metadata,
+                input_root: Path, ifr_root: Path, output_root: Path,
                 holdout_days: int, dow_holdouts: int, n_draws: int):
     logger.debug("Setting up output directories.")
     model_dir = output_root / 'models'
+    infections_dir = output_root / 'infections'
     spline_settings_dir = output_root / 'spline_settings'
     plot_dir = output_root / 'plots'
     shell_tools.mkdir(model_dir)
+    shell_tools.mkdir(infections_dir)
     shell_tools.mkdir(spline_settings_dir)
     shell_tools.mkdir(plot_dir)
 
     logger.debug("Loading and cleaning data.")
     hierarchy = data.load_most_detailed_locations(input_root)
     agg_hierarchy = data.load_aggregate_locations(input_root)
+    
+    ifr, risk = data.load_ifr(ifr_root)
 
     full_data = data.load_full_data(input_root)
     full_data, manipulation_metadata = data.evil_doings(full_data)
@@ -108,6 +120,12 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     data_path = Path(working_dir) / 'model_data.pkl'
     with data_path.open('wb') as data_file:
         pickle.dump(model_data, data_file, -1)
+    ifr_path = Path(working_dir) / 'ifr.pkl'
+    with ifr_path.open('wb') as ifr_file:
+        pickle.dump(ifr, ifr_file, -1)
+    hierarchy_path = Path(working_dir) / 'hierarchy.pkl'
+    with hierarchy_path.open('wb') as hierarchy_file:
+        pickle.dump(hierarchy, hierarchy_file, -1)
     results_path = Path(working_dir) / 'model_outputs'
     shell_tools.mkdir(results_path)
     model_settings['results_dir'] = str(results_path)
@@ -116,15 +134,16 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
         yaml.dump(model_settings, settings_file)
     job_args_map = {
         location_id: [models.__file__,
-                      location_id, data_path, settings_path, dow_holdouts, str(plot_dir), n_draws,
+                      location_id, data_path, ifr_path, hierarchy_path, settings_path, 
+                      dow_holdouts, str(plot_dir), n_draws,
                       cluster.OMP_NUM_THREADS]
         for location_id in model_data['location_id'].unique() if location_id not in PARENT_MODEL_LOCATIONS
     }
     cluster.run_cluster_jobs('covid_death_models', output_root, job_args_map)
 
-    logger.debug("Compiling results.")
+    logger.debug("Compiling death results.")
     results = []
-    for result_path in results_path.iterdir():
+    for result_path in [f for f in results_path.iterdir() if '_deaths' in str(f)]:
         with result_path.open('rb') as result_file:
             results.append(pickle.load(result_file))
     post_model_data = pd.concat([r.model_data for r in results]).reset_index(drop=True)
@@ -141,30 +160,47 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     obs_var = smoother_settings['obs_var']
     spline_vars = smoother_settings['spline_vars']
     
+    logger.debug("Compiling (daily) infection results.")
+    results = []
+    for result_path in [f for f in results_path.iterdir() if '_infections' in str(f)]:
+        with result_path.open('rb') as result_file:
+            results.append(pickle.load(result_file))
+    infections = pd.concat([r.infections for r in results]).reset_index(drop=True)
+    ratios = pd.concat([r.ratios for r in results]).reset_index(drop=True)
+    
     logger.debug("Capturing location-dates with NaNs and dropping them.")
+    smooth_draws = smooth_draws.set_index(['location_id', 'date'])
+    infections = infections.set_index(['location_id', 'date'])
     nan_rows = smooth_draws.isnull().any(axis=1)
-    smooth_draws_nans = smooth_draws.loc[nan_rows].reset_index(drop=True)
-    smooth_draws = smooth_draws.loc[~nan_rows].reset_index(drop=True)
-    nan_min = smooth_draws_nans.groupby('location_id')['date'].min()
-    val_max = smooth_draws.groupby('location_id')['date'].max()
-    date_diffs = (nan_min - val_max).apply(lambda x: x.days)
-    date_diffs = date_diffs.loc[date_diffs.notnull()]
-    app_metadata.update({'nan_locations': date_diffs.index.to_list()})
-    if (date_diffs < 0).any():
-        date_diffs.to_csv(output_root / 'problem_location_report.csv', index=False)
-        raise ValueError('Dropping NaNs in middle of time series (see problem_location_report.csv)')
+    smooth_draws_nans = smooth_draws.loc[nan_rows].reset_index()
+    if smooth_draws_nans.empty:
+        smooth_draws = smooth_draws.reset_index()
+        infections = infections.reset_index()
+        app_metadata.update({'nan_locations': []})
+    else:
+        smooth_draws = smooth_draws.loc[~nan_rows].reset_index()
+        infections = infections.loc[~nan_rows].reset_index()
+        nan_min = smooth_draws_nans.groupby('location_id')['date'].min()
+        val_max = smooth_draws.groupby('location_id')['date'].max()
+        date_diffs = (nan_min - val_max).apply(lambda x: x.days)
+        date_diffs = date_diffs.loc[date_diffs.notnull()]
+        app_metadata.update({'nan_locations': date_diffs.index.to_list()})
+        if (date_diffs < 0).any():
+            date_diffs.to_csv(output_root / 'problem_location_report.csv', index=False)
+            raise ValueError('Dropping NaNs in middle of time series (see problem_location_report.csv)')
 
-    logger.debug("Fill specified model locations with parent and plot them.")
-    smooth_draws, model_data = data.apply_parents(PARENT_MODEL_LOCATIONS, hierarchy, smooth_draws,
-                                                  model_data, pop_data)
-    summarize.summarize_and_plot(
-        smooth_draws.loc[smooth_draws['location_id'].isin(PARENT_MODEL_LOCATIONS)].rename(columns={'date': 'Date'}),
-        model_data.loc[model_data['location_id'].isin(PARENT_MODEL_LOCATIONS)],
-        str(plot_dir), obs_var=obs_var, spline_vars=spline_vars, pop_data=pop_data
-    )
-    app_metadata.update({'parent_model_locations': PARENT_MODEL_LOCATIONS})
+    # logger.debug("Fill specified model locations with parent and plot them.")
+    # raise ValueError('We don't use the parent model locations, and would need to replace infections as well.')
+    # smooth_draws, model_data = data.apply_parents(PARENT_MODEL_LOCATIONS, hierarchy, smooth_draws,
+    #                                               model_data, pop_data)
+    # summarize.summarize_and_plot(
+    #     smooth_draws.loc[smooth_draws['location_id'].isin(PARENT_MODEL_LOCATIONS)].rename(columns={'date': 'Date'}),
+    #     model_data.loc[model_data['location_id'].isin(PARENT_MODEL_LOCATIONS)],
+    #     str(plot_dir), obs_var=obs_var, spline_vars=spline_vars, pop_data=pop_data
+    # )
+    # app_metadata.update({'parent_model_locations': PARENT_MODEL_LOCATIONS})
 
-    logger.debug("Make post-model aggregates and plot them.")
+    logger.debug("Make post-model aggregates of deaths and plot them.")
     agg_locations = [aggregate.Location(1, 'Global')] + agg_locations
     agg_model_data = aggregate.compute_location_aggregates_data(model_data, hierarchy, agg_locations)
     agg_model_data['location_id'] = -agg_model_data['location_id']
@@ -174,14 +210,18 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     agg_draw_df['location_id'] = -agg_draw_df['location_id']
     summarize.summarize_and_plot(agg_draw_df, agg_model_data, str(plot_dir), obs_var=obs_var, spline_vars=spline_vars)
 
-    logger.debug("Compiling plots.")
+    logger.debug("Compiling plots for both deaths and infections.")
     plot_hierarchy = aggregate.get_sorted_hierarchy_w_aggs(hierarchy, agg_hierarchy)
-    possible_pdfs = ['-1.pdf'] + [f'{l}.pdf' for l in plot_hierarchy.location_id]
-    existing_pdfs = [str(x).split('/')[-1] for x in plot_dir.iterdir() if x.is_file()]
-    pdfs = [f'{plot_dir}/{pdf}' for pdf in possible_pdfs if pdf in existing_pdfs]
-    pdf_merger.pdf_merger(pdfs=pdfs, outfile=str(output_root / 'model_results.pdf'))
+    possible_deaths_pdfs = ['-1_deaths.pdf'] + [f'{l}_deaths.pdf' for l in plot_hierarchy.location_id]
+    existing_deaths_pdfs = [str(x).split('/')[-1] for x in plot_dir.iterdir() if x.is_file()]
+    deaths_pdfs = [f'{plot_dir}/{pdf}' for pdf in possible_deaths_pdfs if pdf in existing_deaths_pdfs]
+    pdf_merger.pdf_merger(pdfs=deaths_pdfs, outfile=str(output_root / 'model_results_deaths.pdf'))
+    possible_infections_pdfs = [f'{l}_infections.pdf' for l in plot_hierarchy.location_id]
+    existing_infections_pdfs = [str(x).split('/')[-1] for x in plot_dir.iterdir() if x.is_file()]
+    infections_pdfs = [f'{plot_dir}/{pdf}' for pdf in possible_infections_pdfs if pdf in existing_infections_pdfs]
+    pdf_merger.pdf_merger(pdfs=infections_pdfs, outfile=str(output_root / 'model_results_infections.pdf'))
 
-    logger.debug("Writing output data.")
+    logger.debug("Writing death data.")
     model_data = model_data.rename(columns={'Date': 'date'}).set_index(['location_id', 'date'])
     noisy_draws = noisy_draws.set_index(['location_id', 'date'])
     noisy_draws['observed'] = model_data['Death rate'].notnull().astype(int)
@@ -191,3 +231,49 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     noisy_draws.reset_index().to_csv(output_root / 'model_results.csv', index=False)
     smooth_draws.reset_index().to_csv(output_root / 'model_results_refit.csv', index=False)
     smooth_draws_nans.to_csv(output_root / 'model_results_refit_nans.csv', index=False)
+    
+    logger.debug("Writing daily infection data (convert deaths to daily as well).")
+    infections = infections.set_index(['location_id', 'date'])
+    infections['observed_infections'] = model_data['Death rate'].notnull().astype(int)
+    infections = infections.reset_index()
+    infections['date'] = infections['date'] - pd.Timedelta(days=DURATION + 11)
+    infections = infections.set_index(['location_id', 'date']).sort_index()
+    smooth_draws = (smooth_draws
+                    .sort_index()
+                    .reset_index()
+                    .groupby('location_id')
+                    .apply(lambda x: pd.DataFrame(np.diff(x[[f'draw_{d}' for d in range(n_draws)]], axis=0, prepend=0),
+                                                  index=x['date'],
+                                                  columns=[f'draw_{d}' for d in range(n_draws)])))
+    smooth_draws['observed_deaths'] = model_data['Death rate'].notnull().astype(int)
+    death_inf_data_list = [
+        (smooth_draws.loc[:, [f'draw_{draw}', 'observed_deaths']],
+         infections.loc[:, [f'draw_{draw}', 'observed_infections']]) for draw in range(n_draws)
+    ]
+    _write_infections = functools.partial(
+        data.write_infections,
+        md_locs=hierarchy['location_id'].to_list(),
+        infections_dir=infections_dir,
+        duration=DURATION + 11
+    )
+    with multiprocessing.Pool(50) as p:
+        draw_files = list(tqdm.tqdm(p.imap(_write_infections, death_inf_data_list),
+                                    total=n_draws, file=sys.stdout))
+    logger.debug(f"Example infection draw file: {str(draw_files[0])}")
+    ratios.to_csv(output_root / 'ratio_adjustment.csv', index=False)
+    
+    logger.debug("Writing IFR file.")
+    ratios = (ratios
+              .loc[:, ['location_id', 'date', 'adj_ifr']]
+              .set_index(['location_id', 'date'])
+              .rename(columns={'adj_ifr':'ifr'}))
+    risk = risk.set_index('location_id')
+    risk_adj_factor = ratios['ifr'] / risk['ifr']
+    risk_adj_factor = pd.concat([risk_adj_factor,
+                                 risk_adj_factor.rename('ifr_lr'),
+                                 risk_adj_factor.rename('ifr_hr')],
+                                axis=1)
+    risk = risk * risk_adj_factor
+    risk.sort_index().reset_index().to_csv(output_root / 'ifr.csv', index=False)
+    logger.debug(f"IFR file: {str(output_root / 'ifr.csv')}")
+    

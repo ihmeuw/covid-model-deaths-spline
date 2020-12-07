@@ -74,7 +74,7 @@ def load_full_data(inputs_root: Path) -> pd.DataFrame:
     return data
 
 
-def get_shifted_data(full_data: pd.DataFrame, count_var: str, rate_var: str, shift_size: int = 8) -> pd.DataFrame:
+def get_shifted_data(full_data: pd.DataFrame, count_var: str, rate_var: str, shift_size: int) -> pd.DataFrame:
     """Filter and clean case data and shift into the future."""
     data = full_data.loc[:, ['location_id', 'Date', count_var, 'population']]
     data[rate_var] = data[count_var] / data['population']
@@ -259,3 +259,47 @@ def apply_parents(parent_model_locations: List[int], hierarchy: pd.DataFrame,
         smooth_draws = smooth_draws.append(filled_draws)
 
     return smooth_draws, model_data
+
+
+def load_ifr(ifr_root: Path):
+    ifr_path = ifr_root / 'allage_ifr_by_loctime.csv'
+    risk_path = ifr_root / 'terminal_ifr.csv'
+    
+    ifr_data = pd.read_csv(ifr_path)
+    ifr_data['Date'] = pd.to_datetime(ifr_data['datevar'])
+    ifr_data = ifr_data.rename(columns={'allage_ifr':'ifr'})
+    keep_columns = ['location_id', 'Date', 'ifr']
+    ifr_data = ifr_data.loc[:, keep_columns]
+    
+    risk_data = pd.read_csv(risk_path)
+    
+    return ifr_data, risk_data
+
+
+def write_infections(death_inf_data: Tuple[pd.DataFrame, pd.DataFrame],
+                     md_locs: List[int],
+                     infections_dir: Path, duration: int):
+    draw_cols = [c for c in death_inf_data[0].columns if c.startswith('draw')]
+    if len(draw_cols) == 0:
+        raise ValueError('No draw columns present.')
+    elif len(draw_cols) > 1:
+        raise ValueError('Multiple draw columns present.')
+    draw_col = draw_cols[0]
+    draw = int(draw_col.replace('draw_', ''))
+    
+    death_inf_data = pd.concat([
+        (death_inf_data[0]
+         .loc[:, [draw_col, 'observed_deaths']]
+         .rename(columns={draw_col:'deaths_draw'})),
+        (death_inf_data[1]
+         .loc[:, [draw_col, 'observed_infections']]
+         .rename(columns={draw_col:'infections_draw'}))
+    ], axis=1)
+    death_inf_data['draw'] = draw
+    death_inf_data['duration'] = duration
+    death_inf_data = death_inf_data.reset_index()
+    most_detailed = death_inf_data['location_id'].isin(md_locs)
+    death_inf_data = death_inf_data.loc[most_detailed]
+    death_inf_data.to_csv(infections_dir / f'draw_{draw}.csv', index=False)
+    
+    return infections_dir / f'draw_{draw}.csv'

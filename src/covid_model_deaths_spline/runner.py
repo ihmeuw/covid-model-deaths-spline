@@ -134,7 +134,7 @@ def make_deaths(app_metadata: cli_tools.Metadata,
         yaml.dump(model_settings, settings_file)
     job_args_map = {
         location_id: [models.__file__,
-                      location_id, data_path, ifr_path, hierarchy_path, settings_path, 
+                      location_id, data_path, ifr_path, hierarchy_path, settings_path,
                       dow_holdouts, str(plot_dir), n_draws,
                       cluster.OMP_NUM_THREADS]
         for location_id in model_data['location_id'].unique() if location_id not in PARENT_MODEL_LOCATIONS

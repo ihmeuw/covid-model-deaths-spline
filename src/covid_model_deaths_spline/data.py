@@ -13,7 +13,7 @@ def evil_doings(full_data: pd.DataFrame) -> Tuple[pd.DataFrame, Dict]:
 #    arizona = full_data['location_id'] == 525
 #    full_data.loc[arizona, 'Hospitalizations'] = np.nan
 #    manipulation_metadata['arizona'] = 'dropped hospitalizations'
-    
+
 #    new_york = full_data['location_id'] == 555
 #    full_data.loc[new_york, 'Hospitalizations'] = np.nan
 #    manipulation_metadata['new_york'] = 'dropped hospitalizations'
@@ -34,7 +34,7 @@ def evil_doings(full_data: pd.DataFrame) -> Tuple[pd.DataFrame, Dict]:
     vietnam = full_data['location_id'] == 20
     full_data.loc[vietnam, 'Hospitalizations'] = np.nan
     manipulation_metadata['vietnam'] = 'dropped hospitalizations'
-   
+
     return full_data, manipulation_metadata
 
 
@@ -226,10 +226,7 @@ def fill_dates(df: pd.DataFrame, interp_var: str = None) -> pd.DataFrame:
 def drop_leading_zeros(df: pd.DataFrame, rate_vars: List[str], leading_window: int = 14) -> pd.DataFrame:
     zeros = df[rate_vars].sum(axis=1) == 0
     zeros_df = df.loc[zeros]
-    zeros_df['n'] = np.hstack(zeros_df
-                              .groupby('location_id', as_index=False)
-                              .apply(lambda x: x.reset_index().index.to_list())
-                              .to_list())
+    zeros_df['n'] = zeros_df.groupby('location_id').cumcount()
     zeros_df['max_n'] = zeros_df.groupby('location_id', as_index=False)['n'].transform(max)
     pre_month_zeros = zeros_df.loc[zeros_df['n'] <= zeros_df['max_n'] - leading_window].index
     df = df.drop(pre_month_zeros).reset_index(drop=True)

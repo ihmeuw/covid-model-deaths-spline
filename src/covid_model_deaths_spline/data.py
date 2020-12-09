@@ -38,9 +38,12 @@ def evil_doings(full_data: pd.DataFrame) -> Tuple[pd.DataFrame, Dict]:
     return full_data, manipulation_metadata
 
 
-def load_most_detailed_locations(inputs_root: Path) -> pd.DataFrame:
+def load_most_detailed_locations(inputs_root: Path, fh_subnationals: bool = False) -> pd.DataFrame:
     """Loads the most detailed locations in the current modeling hierarchy."""
-    location_hierarchy_path = inputs_root / 'locations' / 'modeling_hierarchy.csv'
+    if fh_subnationals:
+        location_hierarchy_path = inputs_root / 'locations' / 'fh_small_area_hierarchy.csv'
+    else:
+        location_hierarchy_path = inputs_root / 'locations' / 'modeling_hierarchy.csv'
     hierarchy = pd.read_csv(location_hierarchy_path)
 
     most_detailed = hierarchy['most_detailed'] == 1
@@ -49,9 +52,12 @@ def load_most_detailed_locations(inputs_root: Path) -> pd.DataFrame:
     return hierarchy.loc[most_detailed, keep_columns].sort_values('sort_order').reset_index(drop=True)
 
 
-def load_aggregate_locations(inputs_root: Path) -> pd.DataFrame:
+def load_aggregate_locations(inputs_root: Path, fh_subnationals: bool = False) -> pd.DataFrame:
     """Loads the parent locations in the current modeling hierarchy (except global)."""
-    location_hierarchy_path = inputs_root / 'locations' / 'modeling_hierarchy.csv'
+    if fh_subnationals:
+        location_hierarchy_path = inputs_root / 'locations' / 'fh_small_area_hierarchy.csv'
+    else:
+        location_hierarchy_path = inputs_root / 'locations' / 'modeling_hierarchy.csv'
     hierarchy = pd.read_csv(location_hierarchy_path)
 
     aggregate = hierarchy['most_detailed'] == 0
@@ -61,11 +67,13 @@ def load_aggregate_locations(inputs_root: Path) -> pd.DataFrame:
     return hierarchy.loc[aggregate & not_global, keep_columns].sort_values('sort_order').reset_index(drop=True)
 
 
-def load_full_data(inputs_root: Path) -> pd.DataFrame:
+def load_full_data(inputs_root: Path, fh_subnationals: bool = False) -> pd.DataFrame:
     """Gets all death, case, and population data."""
-    full_data_paths = [inputs_root / 'use_at_your_own_risk' / 'full_data_extra_hospital.csv',
-                       inputs_root / 'full_data_fh_subnationals.csv']
-    data = pd.concat([pd.read_csv(full_data_path) in full_data_paths])
+    if fh_subnationals:
+        full_data_path = inputs_root / 'full_data_fh_subnationals.csv'
+    else:
+        full_data_path = inputs_root / 'use_at_your_own_risk' / 'full_data_extra_hospital.csv'
+    data = pd.read_csv(full_data_path)
     data['Date'] = pd.to_datetime(data['Date'])
     data['location_id'] = data['location_id'].astype(int)
 

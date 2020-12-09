@@ -63,8 +63,11 @@ def load_aggregate_locations(inputs_root: Path) -> pd.DataFrame:
 
 def load_full_data(inputs_root: Path) -> pd.DataFrame:
     """Gets all death, case, and population data."""
-    full_data_path = inputs_root / 'use_at_your_own_risk' / 'full_data_extra_hospital.csv'
-    data = pd.read_csv(full_data_path)
+    full_data_paths = [inputs_root / 'use_at_your_own_risk' / 'full_data_extra_hospital.csv',
+                       inputs_root / 'full_data_fh_subnationals.csv']
+    data = pd.concat(
+        [pd.read_csv(full_data_path) in full_data_paths]
+    )
     data['Date'] = pd.to_datetime(data['Date'])
     data['location_id'] = data['location_id'].astype(int)
 

@@ -23,6 +23,9 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     shell_tools.mkdir(model_dir)
     shell_tools.mkdir(spline_settings_dir)
     shell_tools.mkdir(plot_dir)
+    
+    if fh_subnationals:
+        logger.debug("Using Fred Hutch small-area hierarchy.")
 
     logger.debug("Loading and cleaning data.")
     hierarchy = data.load_most_detailed_locations(input_root, fh_subnationals)

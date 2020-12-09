@@ -31,6 +31,9 @@ from covid_model_deaths_spline import runner
               type=click.INT,
               default=1000,
               help='Number of posterior samples.')
+@click.option('--fh-subnationals',
+              is_flag=True,
+              help='Whether to run Fred Hutch small area hierarchy or not.')
 @click.option('-b', '--mark-best', 'mark_dir_as_best',
               is_flag=True,
               help='Marks the new outputs as best in addition to marking them as latest.')
@@ -40,7 +43,7 @@ from covid_model_deaths_spline import runner
 @cli_tools.add_verbose_and_with_debugger
 def run_deaths(run_metadata,
                inputs_version, output_root, n_holdout_days, dow_holdouts, n_draws,
-               mark_dir_as_best, production_tag,
+               fh_subnationals, mark_dir_as_best, production_tag,
                verbose, with_debugger):
     """Run spline deaths model."""
     cli_tools.configure_logging_to_terminal(verbose)
@@ -55,7 +58,7 @@ def run_deaths(run_metadata,
     cli_tools.configure_logging_to_files(run_directory)
 
     main = cli_tools.monitor_application(runner.make_deaths, logger, with_debugger)
-    app_metadata, _ = main(inputs_root, run_directory, n_holdout_days, dow_holdouts, n_draws)
+    app_metadata, _ = main(inputs_root, run_directory, n_holdout_days, dow_holdouts, n_draws, fh_subnationals)
 
     cli_tools.finish_application(run_metadata, app_metadata, run_directory,
                                  mark_dir_as_best, production_tag)

@@ -15,7 +15,7 @@ PARENT_MODEL_LOCATIONS = [189]  # Tanzania
 
 
 def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root: Path,
-                holdout_days: int, dow_holdouts: int, n_draws: int):
+                holdout_days: int, dow_holdouts: int, n_draws: int, fh_subnationals: bool):
     logger.debug("Setting up output directories.")
     model_dir = output_root / 'models'
     spline_settings_dir = output_root / 'spline_settings'
@@ -25,10 +25,10 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     shell_tools.mkdir(plot_dir)
 
     logger.debug("Loading and cleaning data.")
-    hierarchy = data.load_most_detailed_locations(input_root)
-    agg_hierarchy = data.load_aggregate_locations(input_root)
+    hierarchy = data.load_most_detailed_locations(input_root, fh_subnationals)
+    agg_hierarchy = data.load_aggregate_locations(input_root, fh_subnationals)
 
-    full_data = data.load_full_data(input_root)
+    full_data = data.load_full_data(input_root, fh_subnationals)
     full_data, manipulation_metadata = data.evil_doings(full_data)
     app_metadata.update({'data_manipulation': manipulation_metadata})
 

@@ -34,7 +34,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     full_data = data.load_full_data(input_root, fh_subnationals)
     full_data, manipulation_metadata = data.evil_doings(full_data)
     app_metadata.update({'data_manipulation': manipulation_metadata})
-
+    
     death_data = data.get_death_data(full_data)
     max_death_date = (death_data
                       .groupby('location_id')['Date'].max()
@@ -61,7 +61,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     hosp_data, missing_hosp = data.filter_data_by_location(hosp_data, hierarchy, 'hospitalizations')
     death_data, missing_deaths = data.filter_data_by_location(death_data, hierarchy, 'deaths')
     pop_data, missing_pop = data.filter_data_by_location(pop_data, hierarchy, 'population')
-
+    
     logger.debug("Combine datasets.")
     model_data = data.combine_data(case_data, hosp_data, death_data, pop_data, hierarchy)
     model_data = model_data.sort_values(['location_id', 'Date']).reset_index(drop=True)
@@ -71,11 +71,12 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     logger.debug("Create aggregates for modeling.")
     agg_locations = [aggregate.Location(lid, lname) for lid, lname in
                      zip(agg_hierarchy['location_id'], agg_hierarchy['location_name'])]
-    agg_model_data = aggregate.compute_location_aggregates_data(
-        model_data, hierarchy, agg_locations,
-        ['Confirmed case rate', 'Hospitalization rate', 'Death rate']
-    )
-    model_data = model_data.append(agg_model_data)
+    if agg_locations:
+        agg_model_data = aggregate.compute_location_aggregates_data(
+            model_data, hierarchy, agg_locations,
+            ['Confirmed case rate', 'Hospitalization rate', 'Death rate']
+        )
+        model_data = model_data.append(agg_model_data)
     model_data = model_data.sort_values(['location_id', 'Date']).reset_index(drop=True)
 
     logger.debug("Filter cases/hospitalizations based on threshold.")
@@ -168,18 +169,22 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     app_metadata.update({'parent_model_locations': PARENT_MODEL_LOCATIONS})
 
     logger.debug("Make post-model aggregates and plot them.")
-    agg_locations = [aggregate.Location(1, 'Global')] + agg_locations
-    agg_model_data = aggregate.compute_location_aggregates_data(model_data, hierarchy, agg_locations)
-    agg_model_data['location_id'] = -agg_model_data['location_id']
-    agg_model_data['location_name'] = agg_model_data['location_name'] + ' (model aggregate)'
-    agg_draw_df = aggregate.compute_location_aggregates_draws(smooth_draws.rename(columns={'date': 'Date'}),
-                                                              hierarchy, agg_locations)
-    agg_draw_df['location_id'] = -agg_draw_df['location_id']
-    summarize.summarize_and_plot(agg_draw_df, agg_model_data, str(plot_dir), obs_var=obs_var, spline_vars=spline_vars)
+    if agg_locations:
+        if aggregate.Location(1, 'Global') not in agg_locations:
+            agg_locations = [aggregate.Location(1, 'Global')] + agg_locations
+        agg_model_data = aggregate.compute_location_aggregates_data(model_data, hierarchy, agg_locations)
+        agg_model_data['location_id'] = -agg_model_data['location_id']
+        agg_model_data['location_name'] = agg_model_data['location_name'] + ' (model aggregate)'
+        agg_draw_df = aggregate.compute_location_aggregates_draws(smooth_draws.rename(columns={'date': 'Date'}),
+                                                                  hierarchy, agg_locations)
+        agg_draw_df['location_id'] = -agg_draw_df['location_id']
+        summarize.summarize_and_plot(agg_draw_df, agg_model_data, str(plot_dir), obs_var=obs_var, spline_vars=spline_vars)
 
     logger.debug("Compiling plots.")
     plot_hierarchy = aggregate.get_sorted_hierarchy_w_aggs(hierarchy, agg_hierarchy)
-    possible_pdfs = ['-1.pdf'] + [f'{l}.pdf' for l in plot_hierarchy.location_id]
+    possible_pdfs = [f'{l}.pdf' for l in plot_hierarchy.location_id]
+    if '-1.pdf' not in possible_pdfs:
+        possible_pdfs = ['-1.pdf'] + possible_pdfs
     existing_pdfs = [str(x).split('/')[-1] for x in plot_dir.iterdir() if x.is_file()]
     pdfs = [f'{plot_dir}/{pdf}' for pdf in possible_pdfs if pdf in existing_pdfs]
     pdf_merger.pdf_merger(pdfs=pdfs, outfile=str(output_root / 'model_results.pdf'))

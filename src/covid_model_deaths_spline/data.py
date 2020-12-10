@@ -95,9 +95,13 @@ def get_shifted_data(full_data: pd.DataFrame, count_var: str, rate_var: str, shi
     keep_columns = ['location_id', 'True date', 'Date', rate_var]
     data = data.loc[non_na & has_data, keep_columns].reset_index(drop=True)
 
-    data = (data.groupby('location_id', as_index=False)
-            .apply(lambda x: fill_dates(x, rate_var))
-            .reset_index(drop=True))
+    if data.empty:
+        data = pd.DataFrame(columns=keep_columns)
+        data[rate_var] = data[rate_var].astype(float)
+    else:
+        data = (data.groupby('location_id', as_index=False)
+                .apply(lambda x: fill_dates(x, rate_var))
+                .reset_index(drop=True))
 
     return data
 
@@ -127,11 +131,12 @@ def get_population_data(input_root: Path, hierarchy: pd.DataFrame) -> pd.DataFra
 
 def holdout_days(df: pd.DataFrame, n_holdout_days: int) -> pd.DataFrame:
     """Drop some number of holdout days from the data."""
-    df = df.copy()
-    df['last_date'] = df.groupby('location_id')['Date'].transform(max)
-    keep_idx = df.apply(lambda x: x['Date'] <= x['last_date'] - pd.Timedelta(days=n_holdout_days), axis=1)
-    df = df.loc[keep_idx].reset_index(drop=True)
-    del df['last_date']
+    if not df.empty:
+        df = df.copy()
+        df['last_date'] = df.groupby('location_id')['Date'].transform(max)
+        keep_idx = df.apply(lambda x: x['Date'] <= x['last_date'] - pd.Timedelta(days=n_holdout_days), axis=1)
+        df = df.loc[keep_idx].reset_index(drop=True)
+        del df['last_date']
 
     return df
 

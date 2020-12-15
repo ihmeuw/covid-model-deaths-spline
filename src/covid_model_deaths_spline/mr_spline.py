@@ -44,7 +44,7 @@ class SplineFit:
         )
         self.data = data
 
-        # cov models
+        # cov model
         logger.debug('Making covariate models.')
         cov_models = []
         if 'intercept' in indep_vars:

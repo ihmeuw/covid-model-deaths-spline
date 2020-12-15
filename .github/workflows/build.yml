@@ -1,0 +1,33 @@
+name: build
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.6] #, 3.8, 3.9]
+    defaults:
+      run:
+        shell: bash -l {0}
+    steps:
+      - uses: actions/checkout@v2
+      - uses: conda-incubator/setup-miniconda@v2
+        with:
+          activate-environment: test_env_python${{ matrix.python-version }}
+          channels: conda-forge
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies python ${{ matrix.python-version }}
+        run: |
+          conda install -y -q -c conda-forge cyipopt gmp &&
+          pip install --global-option=build_ext --global-option '-I'$CONDA_PREFIX'/include/' pycddlib &&
+          pip install drmaa &&
+          git clone https://github.com/zhengp0/limetr.git &&
+          cd limetr && python check_requirements.py && pip install . && cd .. &&
+          git clone https://github.com/zhengp0/MRTool.git &&
+          cd MRTool && git checkout el_hombre_elastico && pip install . && cd .. &&
+          pip install .[dev]
+      - name: Test
+        run: |
+          pytest

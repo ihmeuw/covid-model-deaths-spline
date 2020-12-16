@@ -25,7 +25,7 @@ jobs:
           pip install drmaa &&
           git clone https://github.com/zhengp0/limetr.git &&
           cd limetr && python check_requirements.py && pip install . && cd .. &&
-          git clone https://github.com/zhengp0/MRTool.git &&
+          git clone https://github.com/ihmeuw-msca/MRTool.git &&
           cd MRTool && git checkout el_hombre_elastico && pip install . && cd .. &&
           pip install .[dev]
       - name: Test

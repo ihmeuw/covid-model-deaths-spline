@@ -20,9 +20,11 @@ class SplineFit:
                  observed_var: str = None,
                  pseudo_se_multiplier: float = 1.,
                  se_default: float = 1.,
-                 log: bool = True):
+                 log: bool = True,
+                 verbose: bool = True):
         # set up model data
-        logger.debug('Setting up model data.')
+        if verbose:
+            logger.debug('Setting up model data.')
         data = data.copy()
         if observed_var:
             if not data[observed_var].dtype == 'bool':
@@ -34,7 +36,8 @@ class SplineFit:
 
         # create mrbrt object
         data['study_id'] = 1
-        logger.debug('Building MRData.')
+        if verbose:
+            logger.debug('Building MRData.')
         mr_data = MRData(
             df=data,
             col_obs=dep_var,
@@ -44,8 +47,9 @@ class SplineFit:
         )
         self.data = data
 
-        # cov model
-        logger.debug('Making covariate models.')
+        # cov models
+        if verbose:
+            logger.debug('Making covariate models.')
         cov_models = []
         if 'intercept' in indep_vars:
             if log:
@@ -64,7 +68,8 @@ class SplineFit:
             raise ValueError(f"Unsupported independent variable(s) entered: {'; '.join(bad_vars)}")
 
         # get random knot placement
-        logger.debug('Getting random knot placement.')
+        if verbose:
+            logger.debug('Getting random knot placement.')
         if 'spline_knots' in list(spline_options.keys()):
             raise ValueError('Using random spline, do not manually specify knots.')
         if ensemble_knots is None:
@@ -72,7 +77,8 @@ class SplineFit:
                                                      data[observed_var].values, spline_options)
 
         # spline cov model
-        logger.debug('Setting up spline covariate model.')
+        if verbose:
+            logger.debug('Setting up spline covariate model.')
         spline_model = LinearCovModel(
             alt_cov=spline_var,
             use_re=False,
@@ -88,7 +94,8 @@ class SplineFit:
         self.spline_var = spline_var
 
         # model
-        logger.debug('Building MRBeRT model.')
+        if verbose:
+            logger.debug('Building MRBeRT model.')
         self.mr_model = MRBeRT(mr_data,
                                ensemble_cov_model=spline_model,
                                ensemble_knots=ensemble_knots,
@@ -127,7 +134,7 @@ class SplineFit:
             min_interval = terminal_days / observed.sum()
         start_boundary_pctile = 0.
 
-        # sample, fixing first and last interior knots as specified
+        # fix first and last interior knots as specified
         n_intervals = n_i_knots + 1
         k_start = 0.
         k_end = 1.
@@ -138,10 +145,12 @@ class SplineFit:
             if np.quantile(spline_data[observed], end_boundary_pctile) < spline_data.max():
                 n_intervals -= 1
                 k_end = end_boundary_pctile - min_interval
-        ensemble_knots = utils.sample_knots(n_intervals,
-                                            b=np.array([[k_start, k_end]] * (n_intervals - 1)),
-                                            d=np.array([[min_interval, 1]] * n_intervals),
-                                            N=N)
+                
+        # sample - force first 50% of knots to be in placed first 50% of domain; same of second (for speed)
+        b = np.array([[k_start, k_end / 2]] * ((n_intervals - 1) - int((n_intervals - 1) / 2)) + \
+                     [[k_end / 2, k_end]] * int((n_intervals - 1) / 2))
+        d = np.array([[min_interval, 1]] * n_intervals)
+        ensemble_knots = utils.sample_knots(n_intervals, b=b, d=d, N=N)
         if k_start > 0.:
             ensemble_knots = np.insert(ensemble_knots, 1, start_boundary_pctile, 1)
         if k_end < 1.:

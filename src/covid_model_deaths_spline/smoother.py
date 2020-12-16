@@ -24,8 +24,9 @@ def apply_floor(vals: np.array, floor_val: float) -> np.array:
 
 def run_smoothing_model(mod_df: pd.DataFrame, n_i_knots: int, spline_options: Dict,
                         pred_df: pd.DataFrame, ensemble_knots: np.array,
-                        results_only: bool, log: bool) -> np.array:
-    logger.debug('Building spline fit model.')
+                        results_only: bool, log: bool, verbose: bool) -> np.array:
+    if verbose:
+        logger.debug('Building spline fit model.')
     mr_model = SplineFit(
         data=mod_df,
         dep_var='y',
@@ -36,11 +37,14 @@ def run_smoothing_model(mod_df: pd.DataFrame, n_i_knots: int, spline_options: Di
         ensemble_knots=ensemble_knots,
         observed_var='observed',
         pseudo_se_multiplier=2.,
-        log=log
+        log=log,
+        verbose=verbose
     )
-    logger.debug('Fitting model.')
+    if verbose:
+        logger.debug('Fitting model.')
     mr_model.fit_model()
-    logger.debug('Making model predictions.')
+    if verbose:
+        logger.debug('Making model predictions.')
     smooth_y = mr_model.predict(pred_df)
     mod_df = mr_model.data
     mod_df['smooth_y'] = mr_model.predict(mod_df)
@@ -226,7 +230,7 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
     logger.debug('Launching smoothing model.')
     cumul_smooth_y, cumul_model, cumul_mod_df = run_smoothing_model(
         cumul_mod_df, n_i_knots, cumul_spline_options, pred_df,
-        ensemble_knots=None, results_only=False, log=False
+        ensemble_knots=None, results_only=False, log=False, verbose=True
     )
     ensemble_knots = cumul_model.ensemble_knots
 
@@ -286,8 +290,9 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
                                   pred_df=refit_pred_df,
                                   ensemble_knots=rescaled_ensemble_knots,
                                   results_only=True,
-                                  log=True)
-    with multiprocessing.Pool(int(F_THREAD)) as p:
+                                  log=True,
+                                  verbose=False)
+    with multiprocessing.Pool(int(F_THREAD) - 1) as p:
         smooth_draws = list(tqdm.tqdm(p.imap(_combiner, draw_mod_dfs), total=n_draws, file=sys.stdout))
     smooth_draws = np.vstack(smooth_draws).T
 

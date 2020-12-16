@@ -223,7 +223,7 @@ def fill_dates(df: pd.DataFrame, interp_var: str = None) -> pd.DataFrame:
     return df
 
 
-def drop_leading_zeros(df: pd.DataFrame, rate_vars: List[str], leading_window: int = 4) -> pd.DataFrame:
+def drop_leading_zeros(df: pd.DataFrame, rate_vars: List[str], leading_window: int = 14) -> pd.DataFrame:
     zeros = df[rate_vars].sum(axis=1) == 0
     zeros_df = df.loc[zeros]
     zeros_df['n'] = zeros_df.groupby('location_id').cumcount()

@@ -63,7 +63,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     model_data = data.combine_data(case_data, hosp_data, death_data, pop_data, hierarchy)
     model_data = model_data.sort_values(['location_id', 'Date']).reset_index(drop=True)
     model_data = data.drop_leading_zeros(model_data,
-                                         ['Death rate', 'Confirmed case rate', 'Hospitalization rate'])
+                                         ['Death rate'])  # , 'Confirmed case rate', 'Hospitalization rate'
 
     logger.debug("Create aggregates for modeling.")
     agg_locations = [aggregate.Location(lid, lname) for lid, lname in

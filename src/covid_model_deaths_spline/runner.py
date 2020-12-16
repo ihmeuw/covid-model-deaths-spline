@@ -16,7 +16,7 @@ PARENT_MODEL_LOCATIONS = [189]  # Tanzania
 
 def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root: Path,
                 holdout_days: int, dow_holdouts: int, n_draws: int):
-    logger.debug("Setting up output directories.")
+    logger.debug(f"Setting up output directories in {str(output_root)}.")
     model_dir = output_root / 'models'
     spline_settings_dir = output_root / 'spline_settings'
     plot_dir = output_root / 'plots'
@@ -63,7 +63,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     model_data = data.combine_data(case_data, hosp_data, death_data, pop_data, hierarchy)
     model_data = model_data.sort_values(['location_id', 'Date']).reset_index(drop=True)
     model_data = data.drop_leading_zeros(model_data,
-                                         ['Death rate', 'Confirmed case rate', 'Hospitalization rate'])
+                                         ['Death rate'])  # , 'Confirmed case rate', 'Hospitalization rate'
 
     logger.debug("Create aggregates for modeling.")
     agg_locations = [aggregate.Location(lid, lname) for lid, lname in
@@ -181,7 +181,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     pdfs = [f'{plot_dir}/{pdf}' for pdf in possible_pdfs if pdf in existing_pdfs]
     pdf_merger.pdf_merger(pdfs=pdfs, outfile=str(output_root / 'model_results.pdf'))
 
-    logger.debug("Writing output data.")
+    logger.debug(f"Writing output data in {str(output_root)}.")
     model_data = model_data.rename(columns={'Date': 'date'}).set_index(['location_id', 'date'])
     noisy_draws = noisy_draws.set_index(['location_id', 'date'])
     noisy_draws['observed'] = model_data['Death rate'].notnull().astype(int)

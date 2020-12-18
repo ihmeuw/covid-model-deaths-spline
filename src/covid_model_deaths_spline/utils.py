@@ -1,6 +1,6 @@
 import numpy as np
 
-KNOT_DAYS = 12
+KNOT_DAYS = 14
 FLOOR_DEATHS = 0.005
 
 

@@ -298,10 +298,8 @@ def smoother(df: pd.DataFrame, obs_var: str, pred_vars: List[str],
 
     # make pretty (in linear cumulative space)
     logger.debug('Cleaning up draws.')
-    noisy_draws = draw_cleanup(noisy_draws,
-                               x_pred, df)
-    smooth_draws = draw_cleanup(smooth_draws,
-                                x_pred, df)
+    noisy_draws = draw_cleanup(noisy_draws, x_pred, df)
+    smooth_draws = draw_cleanup(smooth_draws, x_pred, df)
 
     # get best knots and betas
     logger.debug('Locating best settings.')

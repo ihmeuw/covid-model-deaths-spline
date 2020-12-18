@@ -238,12 +238,14 @@ def fill_dates(df: pd.DataFrame, interp_var: str = None) -> pd.DataFrame:
 
 
 def drop_leading_zeros(df: pd.DataFrame, rate_vars: List[str], leading_window: int = 14) -> pd.DataFrame:
-    zeros = df[rate_vars].sum(axis=1) == 0
+    zeros = df.copy()
+    zeros[rate_vars] = zeros.groupby('location_id')[rate_vars].fillna(method='pad')
+    zeros = zeros[rate_vars].sum(axis=1) == 0
     zeros_df = df.loc[zeros]
     zeros_df['n'] = zeros_df.groupby('location_id').cumcount()
     zeros_df['max_n'] = zeros_df.groupby('location_id', as_index=False)['n'].transform(max)
-    pre_month_zeros = zeros_df.loc[zeros_df['n'] <= zeros_df['max_n'] - leading_window].index
-    df = df.drop(pre_month_zeros).reset_index(drop=True)
+    pre_window_zeros = zeros_df.loc[zeros_df['n'] <= zeros_df['max_n'] - leading_window].index
+    df = df.drop(pre_window_zeros).reset_index(drop=True)
     return df
 
 

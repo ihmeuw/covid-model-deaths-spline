@@ -23,7 +23,7 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     shell_tools.mkdir(model_dir)
     shell_tools.mkdir(spline_settings_dir)
     shell_tools.mkdir(plot_dir)
-    
+
     if fh_subnationals:
         logger.debug("Using Fred Hutch small-area hierarchy.")
 
@@ -32,9 +32,10 @@ def make_deaths(app_metadata: cli_tools.Metadata, input_root: Path, output_root:
     agg_hierarchy = data.load_aggregate_locations(input_root, fh_subnationals)
 
     full_data = data.load_full_data(input_root, fh_subnationals)
+    full_data = full_data.loc[full_data['location_id'].isin(hierarchy['location_id'].to_list())]
     full_data, manipulation_metadata = data.evil_doings(full_data)
     app_metadata.update({'data_manipulation': manipulation_metadata})
-    
+
     death_data = data.get_death_data(full_data)
     max_death_date = (death_data
                       .groupby('location_id')['Date'].max()

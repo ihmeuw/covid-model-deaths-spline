@@ -31,6 +31,10 @@ def evil_doings(full_data: pd.DataFrame) -> Tuple[pd.DataFrame, Dict]:
 #    full_data.loc[hubei, 'Confirmed'] = np.nan
 #    manipulation_metadata['hubei'] = 'dropped cases'
 
+    russia = full_data['location_id'] == 62
+    full_data.loc[russia, 'Deaths'] *= 3.38
+    manipulation_metadata['russia'] = 'Scaled up deaths according to https://webcache.googleusercontent.com/search?q=cache:2_XaL_H9U-0J:https://rosstat.gov.ru/storage/mediabank/lKbaJ4fY/edn-11-2020.xlsx+&cd=1&hl=en&ct=clnk&gl=ru&client=firefox-b-d'
+
     vietnam = full_data['location_id'] == 20
     full_data.loc[vietnam, 'Hospitalizations'] = np.nan
     manipulation_metadata['vietnam'] = 'dropped hospitalizations'
